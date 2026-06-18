@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package pb;
+option go_package = "/common_pb";
+
+// 分页请求
+message PaginationReq {
+  int32 page = 1; // 当前页码
+  int32 size = 2; // 每页数量
+}
+
+// 分页响应
+message PaginationResp {
+  int32 page = 1;
+  int32 size = 2;
+  int64 total = 3; // 总记录数
+}
+
+// 统一基础响应 (可选，通常 gRPC 推荐使用 status.Code，但业务层可自定义)
+message BaseResponse {
+  int32 code = 1;
+  string message = 2;
+}
+
+// protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/common.proto

@@ -1,0 +1,46 @@
+mysql:
+  username: "root"
+  password: "123456"
+  host: "127.0.0.1"
+  port: "3306"
+  userDatabase: "campus_user"
+  charset: "utf8mb4"
+  driver: "mysql"
+
+redis:
+  username: ""
+  password: "123456"
+  address: "127.0.0.1:6379"
+
+jwt:
+  authKey: "campus_help_secret_2026"
+  accessExpireH: 24
+  refreshExpireH: 168
+
+rabbitmq:
+  username: "yun"
+  password: "123456"
+  address: "localhost:5672"
+
+etcd:
+  address:
+    - "127.0.0.1:2379"
+
+# Jaeger OTLP HTTP endpoint (Jaeger >= 1.35 默认开启 4318)
+jaeger:
+  endpoint: "127.0.0.1:4318"
+
+wechat:
+  appId: "wxa782f10bddd49b38"
+  appSecret: "bed491834c49bbf9bfd66387936f176e"
+
+gateway:
+  address: "0.0.0.0:8082"
+  rateLimit: 100
+  rateBurst: 200
+
+service:
+  user:
+    name: "user-service"
+    address: "127.0.0.1:8101"
+    loadBalance: false

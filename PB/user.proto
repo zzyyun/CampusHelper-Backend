@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package pb;
+option go_package = "/user_pb";
+
+import "google/protobuf/timestamp.proto";
+import "PB/common.proto";
+
+service UserService{
+  // 微信小程序专属登录
+  rpc WxLogin (WxLoginRequest) returns (WxLoginResponse);
+
+  // 校园实名认证 & 绑定学校 (核心隔离字段)
+  rpc BindCampus (BindCampusRequest) returns (pb.BaseResponse);
+
+  // 获取当前用户信息(含学校信息)
+  rpc GetCurrentUser (GetCurrentUserRequest) returns (UserInfo);
+
+  // 更新用户信息（昵称、头像）
+  rpc UpdateUserInfo (UpdateUserInfoRequest) returns (pb.BaseResponse);
+}
+
+message WxLoginRequest {
+  string js_code = 1; // 微信 wx.login() 获取的 code
+}
+
+message WxLoginResponse {
+  string access_token = 1;
+  bool is_bound_campus = 2; // 标记是否已绑定学校，未绑定则前端强制跳转绑定页
+  int64 school_id = 3;     // 已绑定的学校ID
+}
+
+message BindCampusRequest {
+  string school_name = 1;      // 选择的学校名称,根据传入的名称搜索对应的id绑定到用户
+}
+
+message GetCurrentUserRequest {
+  int64 user_id = 1;
+}
+
+message UserInfo {
+  int64 user_id = 1;
+  string nickname = 2;
+  string avatar_url = 3;
+  int64 school_id = 4;     // 【关键】所属学校ID（修复：int64 → uint64）
+  string school_name = 5;   // 冗余学校名称，减少网关聚合调用
+  string role = 7;          // student, admin, super_admin
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message UpdateUserInfoRequest {
+  string nickname = 1;      // 新昵称（可选）
+  string avatar_url = 2;    // 新头像URL（可选）
+}
+
+message SchoolInfo {
+  int64 school_id = 1;
+  string name = 2;
+  string province = 3;
+}
+
+// protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/user.proto
