@@ -1,9 +1,9 @@
 syntax = "proto3";
 
 package pb;
-option go_package = "/common_pb";
+option go_package = "go_projects/praProject1/PB/pb/common_pb";
 
-// 分页请求
+// 分页请求（传统页码方式，向后兼容）
 message PaginationReq {
   int32 page = 1; // 当前页码
   int32 size = 2; // 每页数量
@@ -16,10 +16,45 @@ message PaginationResp {
   int64 total = 3; // 总记录数
 }
 
+// 游标分页请求（推荐用于无限下拉场景，性能稳定无重复漏数据）
+message CursorPaginationReq {
+  string cursor = 1;    // 上次响应的 next_cursor，首次请求传空
+  int32 page_size = 2;  // 每页条数（默认 20，最大 100）
+}
+
+// 游标分页响应
+message CursorPaginationResp {
+  string next_cursor = 1;  // 下次请求的 cursor，空表示已到末尾
+  bool has_more = 2;       // 是否还有更多数据
+}
+
+// 排序方式（通用）
+enum SortType {
+  SORT_TYPE_UNSPECIFIED = 0;
+  SORT_TYPE_TIME_DESC = 1;    // 时间倒序（默认）
+  SORT_TYPE_LIKES_DESC = 2;   // 点赞数倒序
+  SORT_TYPE_RELEVANCE = 3;    // 相关度排序（搜索场景）
+}
+
 // 统一基础响应 (可选，通常 gRPC 推荐使用 status.Code，但业务层可自定义)
 message BaseResponse {
   int32 code = 1;
   string message = 2;
+}
+
+// 学校上下文（多租户隔离核心字段，网关从 JWT 注入）
+message SchoolContext {
+  int64 school_id = 1;   // 学校ID（多租户隔离键）
+  int64 user_id = 2;     // 当前操作用户ID
+  string trace_id = 3;   // 全链路追踪ID
+}
+
+// 通用空请求（用于不需要参数的 RPC）
+message EmptyRequest {}
+
+// 通用 ID 请求
+message IdRequest {
+  int64 id = 1;
 }
 
 // protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/common.proto

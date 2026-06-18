@@ -1,0 +1,390 @@
+syntax = "proto3";
+
+package pb;
+option go_package = "go_projects/praProject1/PB/pb/content_pb";
+
+import "PB/common.proto";
+
+// =====================================================
+// ContentService 内容服务接口定义
+// 严格遵循 docs/content-service-prd.md v1.0
+// =====================================================
+service ContentService {
+  // ---------- 帖子 CRUD（供 Gateway 调用） ----------
+  // 创建帖子（含 DFA 敏感词扫描）
+  rpc CreatePost (CreatePostRequest) returns (CreatePostResponse);
+  // 获取帖子详情（含扩展字段）
+  rpc GetPost (GetPostRequest) returns (GetPostResponse);
+  // 更新帖子（仅作者本人可操作）
+  rpc UpdatePost (UpdatePostRequest) returns (UpdatePostResponse);
+  // 删除帖子（软删除，仅作者或管理员可操作）
+  rpc DeletePost (DeletePostRequest) returns (DeletePostResponse);
+  // 帖子列表（游标分页 + 多维筛选）
+  rpc ListPosts (ListPostsRequest) returns (ListPostsResponse);
+
+  // ---------- 评论与点赞（供 Gateway 调用） ----------
+  // 创建一级评论
+  rpc CreateComment (CreateCommentRequest) returns (CreateCommentResponse);
+  // 删除评论（仅作者本人）
+  rpc DeleteComment (DeleteCommentRequest) returns (DeleteCommentResponse);
+  // 评论列表（游标分页）
+  rpc ListComments (ListCommentsRequest) returns (ListCommentsResponse);
+  // 点赞帖子
+  rpc LikePost (LikePostRequest) returns (LikePostResponse);
+  // 取消点赞
+  rpc UnlikePost (UnlikePostRequest) returns (UnlikePostResponse);
+
+  // ---------- 内容搜索（代理 ES 查询，供 Gateway 调用） ----------
+  // 关键词搜索 + 分类筛选
+  rpc SearchContent (SearchContentRequest) returns (SearchContentResponse);
+
+  // ---------- 审核操作（供 Admin Service 调用） ----------
+  // 审核通过（pending → published，触发 ES 同步）
+  rpc ApprovePost (ApprovePostRequest) returns (ApprovePostResponse);
+  // 审核拒绝（pending → rejected，需填原因）
+  rpc RejectPost (RejectPostRequest) returns (RejectPostResponse);
+  // 违规下架（published → closed，强制删除 ES 文档）
+  rpc TakedownPost (TakedownPostRequest) returns (TakedownPostResponse);
+}
+
+// =====================================================
+// 枚举定义
+// =====================================================
+
+// 帖子类型
+enum PostType {
+  POST_TYPE_UNSPECIFIED = 0;
+  POST_TYPE_GENERAL = 1;       // 通用帖子
+  POST_TYPE_LOST_FOUND = 2;    // 失物招领
+  POST_TYPE_SECOND_HAND = 3;   // 二手交易
+}
+
+// 帖子状态
+enum PostStatus {
+  POST_STATUS_UNSPECIFIED = 0;
+  POST_STATUS_PENDING = 1;     // 审核中
+  POST_STATUS_PUBLISHED = 2;   // 已发布
+  POST_STATUS_EXPIRED = 3;     // 已过期
+  POST_STATUS_CLOSED = 4;      // 已关闭
+  POST_STATUS_REJECTED = 5;    // 已拒绝
+  POST_STATUS_RETRIEVED = 6;   // 失物已当领（失物招领专用）
+  POST_STATUS_SOLD = 7;        // 二手已售出（二手交易专用）
+}
+
+// 物品分类（失物招领 & 二手交易共用）
+enum ItemCategory {
+  ITEM_CATEGORY_UNSPECIFIED = 0;
+  ITEM_CATEGORY_DIGITAL = 1;        // 手机/数码
+  ITEM_CATEGORY_CERTIFICATE = 2;    // 证件/卡类
+  ITEM_CATEGORY_KEY = 3;            // 钥匙/门卡
+  ITEM_CATEGORY_BOOK = 4;           // 书籍/资料
+  ITEM_CATEGORY_CLOTHING = 5;       // 服装/饰品
+  ITEM_CATEGORY_CHARGER = 6;        // 充电器/配件
+  ITEM_CATEGORY_DAILY = 7;          // 生活用品
+  ITEM_CATEGORY_OTHER = 8;          // 其他
+}
+
+// 成色（二手交易专用）
+enum Condition {
+  CONDITION_UNSPECIFIED = 0;
+  CONDITION_BRAND_NEW = 1;    // 全新
+  CONDITION_LIKE_NEW = 2;     // 几乎全新
+  CONDITION_GOOD = 3;         // 良好
+  CONDITION_FAIR = 4;         // 一般
+}
+
+// 交易方式（二手交易专用）
+enum TradeMethod {
+  TRADE_METHOD_UNSPECIFIED = 0;
+  TRADE_METHOD_FACE_TO_FACE = 1;  // 面交
+  TRADE_METHOD_DELIVERY = 2;      // 快递
+}
+
+// 丢失/拾取标识（失物招领专用）
+enum LostOrFoundType {
+  LOST_OR_FOUND_UNSPECIFIED = 0;
+  LOST_OR_FOUND_LOST = 1;   // 我丢失了
+  LOST_OR_FOUND_FOUND = 2;  // 我拾到了
+}
+
+// 评论状态
+enum CommentStatus {
+  COMMENT_STATUS_UNSPECIFIED = 0;
+  COMMENT_STATUS_NORMAL = 1;   // 正常
+  COMMENT_STATUS_DELETED = 2;  // 已删除（软删除）
+}
+
+// =====================================================
+// 扩展字段（业务模板特有数据）
+// =====================================================
+
+// 失物招领扩展字段
+message LostFoundExtra {
+  string location = 1;             // 丢失/拾取地点（文字描述）
+  ItemCategory item_category = 2;  // 物品分类
+  string contact = 3;              // 联系方式（手机/微信，禁止索引到 ES）
+  LostOrFoundType lost_or_found = 4;  // 丢失/拾取标识
+}
+
+// 二手交易扩展字段
+message SecondHandExtra {
+  double price = 1;                // 期望售价（元）
+  double original_price = 2;       // 原价（元，可选）
+  Condition condition = 3;         // 成色
+  TradeMethod trade_method = 4;    // 交易方式
+  ItemCategory item_category = 5;  // 物品分类
+}
+
+// =====================================================
+// 核心消息类型
+// =====================================================
+
+// 帖子消息（基础字段 + 业务扩展）
+message Post {
+  int64 id = 1;
+  int64 school_id = 2;             // 多租户隔离键
+  int64 user_id = 3;               // 发帖用户
+  PostType type = 4;
+  string title = 5;
+  string content = 6;
+  repeated string images = 7;      // 图片 CDN URL 数组
+  PostStatus status = 8;
+  int32 likes_count = 9;
+  int32 comment_count = 10;
+  int64 created_at = 11;           // Unix 时间戳（秒）
+  int64 updated_at = 12;
+  int64 expired_at = 13;           // 过期时间（可选）
+
+  // 业务扩展字段（按 type 取对应字段）
+  LostFoundExtra lost_found = 20;
+  SecondHandExtra second_hand = 21;
+}
+
+// 评论消息
+message Comment {
+  int64 id = 1;
+  int64 school_id = 2;
+  int64 post_id = 3;
+  int64 user_id = 4;
+  string content = 5;              // 评论内容（1-500 字）
+  int64 parent_id = 6;             // 父评论ID（Phase 2 二级回复使用）
+  CommentStatus status = 7;
+  int64 created_at = 8;
+}
+
+// DFA 敏感词命中详情
+message SensitiveWordHit {
+  string word = 1;   // 命中的敏感词
+  int32 start = 2;   // 起始位置（字符索引）
+  int32 end = 3;     // 结束位置
+  int32 length = 4;  // 长度
+}
+
+// 敏感词错误响应
+message SensitiveWordError {
+  string message = 1;
+  repeated SensitiveWordHit hits = 2;
+}
+
+// =====================================================
+// 帖子 CRUD 请求/响应
+// =====================================================
+
+message CreatePostRequest {
+  int64 school_id = 1;          // 强制注入（多租户隔离）
+  int64 user_id = 2;            // 强制注入（从 JWT）
+  PostType type = 3;            // 帖子类型
+  string title = 4;             // 标题（1-200 字）
+  string content = 5;           // 正文（1-5000 字）
+  repeated string images = 6;   // 图片 URL 列表
+  // 业务扩展字段（根据 type 选择性填写）
+  LostFoundExtra lost_found = 10;
+  SecondHandExtra second_hand = 11;
+}
+
+message CreatePostResponse {
+  int64 post_id = 1;
+  PostStatus status = 2;
+  int64 created_at = 3;
+}
+
+message GetPostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 viewer_user_id = 3;  // 查看者ID（用于判断点赞状态等）
+}
+
+message GetPostResponse {
+  Post post = 1;
+  bool is_liked = 2;          // 当前用户是否已点赞
+  bool is_owner = 3;          // 当前用户是否为作者
+}
+
+message UpdatePostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 user_id = 3;          // 校验权限：仅作者本人
+  string title = 4;
+  string content = 5;
+  repeated string images = 6;
+  LostFoundExtra lost_found = 10;
+  SecondHandExtra second_hand = 11;
+}
+
+message UpdatePostResponse {
+  bool success = 1;
+}
+
+message DeletePostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 user_id = 3;          // 作者本人
+}
+
+message DeletePostResponse {
+  bool success = 1;
+}
+
+message ListPostsRequest {
+  int64 school_id = 1;         // 强制注入
+  PostType type = 2;           // 帖子类型筛选（可选）
+  ItemCategory category = 3;   // 物品分类筛选（可选）
+  PostStatus status = 4;       // 状态筛选（默认 published）
+  pb.CursorPaginationReq pagination = 5;  // 游标分页
+  pb.SortType sort = 6;        // 排序方式
+}
+
+message ListPostsResponse {
+  repeated Post posts = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+// =====================================================
+// 评论请求/响应
+// =====================================================
+
+message CreateCommentRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 user_id = 3;
+  string content = 4;          // 1-500 字
+}
+
+message CreateCommentResponse {
+  int64 comment_id = 1;
+  int64 created_at = 2;
+}
+
+message DeleteCommentRequest {
+  int64 school_id = 1;
+  int64 comment_id = 2;
+  int64 user_id = 3;           // 仅作者本人
+}
+
+message DeleteCommentResponse {
+  bool success = 1;
+}
+
+message ListCommentsRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  pb.CursorPaginationReq pagination = 3;
+}
+
+message ListCommentsResponse {
+  repeated Comment comments = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+// =====================================================
+// 点赞请求/响应
+// =====================================================
+
+message LikePostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 user_id = 3;
+}
+
+message LikePostResponse {
+  bool liked = 1;
+  int32 likes_count = 2;       // 当前点赞总数
+}
+
+message UnlikePostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 user_id = 3;
+}
+
+message UnlikePostResponse {
+  bool liked = 1;
+  int32 likes_count = 2;
+}
+
+// =====================================================
+// 内容搜索请求/响应
+// =====================================================
+
+message SearchContentRequest {
+  int64 school_id = 1;          // 强制注入
+  string keyword = 2;           // 搜索关键词（标题^3 + 内容）
+  PostType type = 3;            // 帖子类型筛选
+  ItemCategory category = 4;    // 物品分类筛选
+  PostStatus status = 5;        // 默认 published
+  int32 page = 6;               // 页码（从 1 开始）
+  int32 page_size = 7;          // 默认 20，最大 100
+  pb.SortType sort = 8;         // 排序方式（默认 relevance）
+}
+
+message SearchContentResponse {
+  repeated Post posts = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int64 took_ms = 5;            // ES 查询耗时
+}
+
+// =====================================================
+// 审核操作请求/响应（Admin Service 调用）
+// =====================================================
+
+message ApprovePostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 reviewer_id = 3;        // 审核员ID
+  string comment = 4;           // 审核备注（可选）
+}
+
+message ApprovePostResponse {
+  bool success = 1;
+  PostStatus new_status = 2;   // 应为 PUBLISHED
+}
+
+message RejectPostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 reviewer_id = 3;
+  string reason = 4;            // 拒绝原因（必填，用于通知用户）
+}
+
+message RejectPostResponse {
+  bool success = 1;
+  PostStatus new_status = 2;   // 应为 REJECTED
+}
+
+message TakedownPostRequest {
+  int64 school_id = 1;
+  int64 post_id = 2;
+  int64 reviewer_id = 3;
+  string reason = 4;            // 下架原因
+}
+
+message TakedownPostResponse {
+  bool success = 1;
+  PostStatus new_status = 2;   // 应为 CLOSED
+}
+
+// protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/content.proto
