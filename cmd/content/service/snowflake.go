@@ -19,29 +19,17 @@ func init() {
 }
 
 // nextPostID 生成下一个帖子 ID（雪花算法）
-func nextPostID() int64 {
-	id, err := snowflakeGen.NextID()
-	if err != nil {
-		// 时钟回拨等极端情况使用 0 占位，调用方应捕获并重试
-		return 0
-	}
-	return id
+// 时钟回拨等异常情况下返回 error，调用方必须 fail-fast 拒绝写入（避免 ID=0 脏数据）
+func nextPostID() (int64, error) {
+	return snowflakeGen.NextID()
 }
 
 // nextCommentID 生成下一个评论 ID
-func nextCommentID() int64 {
-	id, err := snowflakeGen.NextID()
-	if err != nil {
-		return 0
-	}
-	return id
+func nextCommentID() (int64, error) {
+	return snowflakeGen.NextID()
 }
 
 // nextLikeID 生成下一个点赞 ID
-func nextLikeID() int64 {
-	id, err := snowflakeGen.NextID()
-	if err != nil {
-		return 0
-	}
-	return id
+func nextLikeID() (int64, error) {
+	return snowflakeGen.NextID()
 }

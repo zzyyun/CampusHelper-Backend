@@ -70,8 +70,8 @@ type Post struct {
 	Content     string         `gorm:"type:text;not null"                   json:"content"`
 	ImagesJSON  string         `gorm:"column:images;type:json"              json:"images_json"` // 图片 URL 数组，JSON 存储
 	Status      PostStatus     `gorm:"not null;default:1;index"             json:"status"`
-	LikesCount  int32          `gorm:"column:likes_count;not null;default:0" json:"likes_count"`
-	CommentCnt  int32          `gorm:"column:comment_count;not null;default:0" json:"comment_count"`
+	LikesCount   int32          `gorm:"column:likes_count;not null;default:0" json:"likes_count"`
+	CommentCount int32          `gorm:"column:comment_count;not null;default:0" json:"comment_count"`
 	ExpiredAt   *time.Time     `gorm:"column:expired_at"                    json:"expired_at,omitempty"`
 
 	// ─── 业务扩展字段（按 type 取对应字段） ───────────────────────────────────

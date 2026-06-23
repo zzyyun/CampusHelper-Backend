@@ -35,9 +35,10 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 	}
 
 	// ── 1. DFA 敏感词扫描 ────────────────────────────────────────────────
+	// Phase 1 实现：先落库（pending），再由异步审核任务判定。
+	// 当前同步路径检测到敏感词时直接拒绝（不落库），避免脏数据堆积。
+	// Phase 2 接入 RabbitMQ 后改为：先落库 pending → 异步扫描 → 命中则 UpdateStatus(rejected) + 写 reason。
 	if hits := ScanSensitive(req.Title + "\n" + req.Content); len(hits) > 0 {
-		// Phase 1 仅做预演：返回 sensitive error，状态设为 REJECTED
-		// Phase 2 接入 RabbitMQ 异步审核
 		return nil, &SensitiveWordErrorType{Hits: hits}
 	}
 
@@ -49,8 +50,13 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 	}
 
 	// ── 3. 构造 Post 模型 ──────────────────────────────────────────────
+	postID, err := nextPostID()
+	if err != nil {
+		// 雪花 ID 生成失败（时钟回拨等）必须 fail-fast，禁止写入 ID=0 的脏数据
+		return nil, fmt.Errorf("%w: 生成帖子 ID 失败: %v", errInvalidArgument, err)
+	}
 	post := &content_db.Post{
-		ID:         nextPostID(),
+		ID:         postID,
 		SchoolID:   req.SchoolId,
 		UserID:     req.UserId,
 		Type:       int8(req.Type),
@@ -80,8 +86,9 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		return nil, fmt.Errorf("create post: %w", err)
 	}
 
-	// 注入 trace_id 便于链路追踪
-	contextx.SetTraceID(ctx, traceIDFromContext(ctx))
+	// 链路追踪由 pkg/middleware/tracing 拦截器统一注入 ctx，
+	// 此处不再重复调用 contextx.SetTraceID（否则结果 ctx 被丢弃，属于死代码）。
+	// 如需在响应中回带 trace_id，请在 gRPC 响应 Header 中由统一拦截器写入。
 
 	return &pb.CreatePostResponse{
 		PostId:    post.ID,
@@ -225,12 +232,16 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 		repo.IncLikesCount(req.PostId)
 	}
 
-	// 查询最新点赞数
+	// 查询最新点赞数 + 真实 like 状态（避免"已点赞"被误报为 false）
 	post, err := repo.GetByID(req.SchoolId, req.PostId)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.LikePostResponse{Liked: true, LikesCount: post.LikesCount}, nil
+	liked, err := repo.HasLiked(req.SchoolId, req.PostId, req.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.LikePostResponse{Liked: liked, LikesCount: post.LikesCount}, nil
 }
 
 // UnlikePost 取消点赞
@@ -251,7 +262,11 @@ func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePos
 	if err != nil {
 		return nil, err
 	}
-	return &pb.UnlikePostResponse{Liked: false, LikesCount: post.LikesCount}, nil
+	liked, err := repo.HasLiked(req.SchoolId, req.PostId, req.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.UnlikePostResponse{Liked: liked, LikesCount: post.LikesCount}, nil
 }
 
 // ─── 评论 / 搜索 / 审核（Phase 1 占位） ────────────────────────────────────
@@ -336,7 +351,7 @@ func toPbPost(p *content_db.Post) *pb.Post {
 		Images:       images,
 		Status:       pb.PostStatus(p.Status),
 		LikesCount:   p.LikesCount,
-		CommentCount: p.CommentCnt,
+		CommentCount: p.CommentCount,
 		CreatedAt:    p.CreatedAt.Unix(),
 		UpdatedAt:    p.UpdatedAt.Unix(),
 	}
