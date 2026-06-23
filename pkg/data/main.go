@@ -57,12 +57,14 @@ func (School) TableName() string { return tableName }
 
 func main() {
 	config.InitConfig("")
-	DB, err := db.GetDB()
+	// 高校数据属于 user 服务（campus_user.schools 表），故连接 user 库
+	DB, err := db.InitUserDB()
+	if err != nil {
+		log.Fatalf("MySQL 连接失败 host=%s db=%s err=%v",
+			config.Conf.Mysql.Host, config.Conf.Mysql.UserDatabase, err)
+	}
 	log.Printf("MySQL 连接成功 host=%s db=%s",
 		config.Conf.Mysql.Host, config.Conf.Mysql.UserDatabase)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	// 3. 自动建表：首次导入时建表，后续幂等
 	if err := DB.AutoMigrate(&School{}); err != nil {

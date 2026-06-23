@@ -4,8 +4,14 @@ mysql:
   host: "127.0.0.1"
   port: "3306"
   userDatabase: "campus_user"
+  contentDatabase: "campus_content"
   charset: "utf8mb4"
   driver: "mysql"
+  # 多服务数据库映射（每个微服务一个独立数据库，符合微服务架构）
+  # key: 服务名（user/content/task/message/admin/file），value: 数据库名
+  databases:
+    user: "campus_user"
+    content: "campus_content"
 
 redis:
   username: ""
@@ -44,3 +50,7 @@ service:
     name: "user-service"
     address: "127.0.0.1:8101"
     loadBalance: false
+  content:
+    name: "content-service"
+    address: "127.0.0.1:8102"
+    loadBalance: true

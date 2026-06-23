@@ -15,13 +15,34 @@ type ServiceConfig struct {
 	LoadBalance bool   `mapstructure:"loadBalance"` // 键名与字段名驼峰不一致，必须加 mapstructure
 }
 type MysqlConfig struct {
-	Username     string `mapstructure:"username"`
-	Password     string `mapstructure:"password"`
-	Host         string `mapstructure:"host"`
-	Port         string `mapstructure:"port"`
-	UserDatabase string `mapstructure:"userDatabase"`
-	Charset      string `mapstructure:"charset"`
-	Driver       string `mapstructure:"driver"`
+	Username        string            `mapstructure:"username"`
+	Password        string            `mapstructure:"password"`
+	Host            string            `mapstructure:"host"`
+	Port            string            `mapstructure:"port"`
+	UserDatabase    string            `mapstructure:"userDatabase"`
+	ContentDatabase string            `mapstructure:"contentDatabase"`
+	Charset         string            `mapstructure:"charset"`
+	Driver          string            `mapstructure:"driver"`
+	// Databases 通用多服务数据库映射，便于后续扩展（task/message/admin/file）
+	// key: 服务名（user/content/task/...），value: 数据库名
+	// 如果 map 为空，自动用 UserDatabase/ContentDatabase 等具体字段填充
+	Databases map[string]string `mapstructure:"databases"`
+}
+
+// DBName 返回指定服务对应的数据库名。
+// 优先从 Databases map 取，若不存在则回退到具体字段（user/content）。
+// 返回空字符串表示未配置。
+func (m MysqlConfig) DBName(service string) string {
+	if v, ok := m.Databases[service]; ok && v != "" {
+		return v
+	}
+	switch service {
+	case "user":
+		return m.UserDatabase
+	case "content":
+		return m.ContentDatabase
+	}
+	return ""
 }
 type RedisConfig struct {
 	Username string `mapstructure:"username"`

@@ -9,14 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	user_pb "go_projects/praProject1/PB/pb/user_pb"
-	"go_projects/praProject1/cmd/user/model"
-	"go_projects/praProject1/cmd/user/service"
+	content_db "go_projects/praProject1/cmd/content/model"
+	content_service "go_projects/praProject1/cmd/content/service"
+	pb "go_projects/praProject1/PB/pb/content_pb"
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
-	"go_projects/praProject1/pkg/rdb"
 	"go_projects/praProject1/pkg/tracer"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -27,37 +26,39 @@ func main() {
 	// ── Config ───────────────────────────────────────────────────────────────
 	config.InitConfig("")
 
-	// ── Tracer ──────────────────────────────────────────────────────────────
-	shutdown, err := tracer.Init("user-service")
+	// ── Tracer ───────────────────────────────────────────────────────────────
+	shutdown, err := tracer.Init("content-service")
 	if err != nil {
 		log.Printf("[WARN] tracer init: %v (continuing without tracing)\n", err)
 	} else {
 		defer func() { _ = shutdown(context.Background()) }()
 	}
 
-	// ── MySQL ────────────────────────────────────────────────────────────────
-	userDB, err := db.InitUserDB()
+	// ── MySQL（Content Service 独立连接 campus_content 数据库） ──────────────
+	contentDB, err := db.InitContentDB()
 	if err != nil {
 		log.Fatalf("mysql init: %v", err)
 	}
-	// Auto-migrate User Service tables
-	if err = userDB.AutoMigrate(&model.User{}, &model.School{}); err != nil {
+	// Auto-migrate Content Service tables
+	if err = contentDB.AutoMigrate(
+		&content_db.Post{},
+		&content_db.PostLike{},
+		&content_db.PostComment{},
+	); err != nil {
 		log.Fatalf("auto-migrate: %v", err)
 	}
-	fmt.Println("[user-service] MySQL migrated")
-
-	// ── Redis ────────────────────────────────────────────────────────────────
-	if err = rdb.InitRedis(); err != nil {
-		log.Fatalf("redis init: %v", err)
-	}
-	fmt.Println("[user-service] Redis connected")
+	fmt.Println("[content-service] MySQL migrated")
 
 	// ── etcd ─────────────────────────────────────────────────────────────────
 	pkg_etcd.InitEtcd()
 	defer pkg_etcd.CloseEtcd()
 
 	// ── gRPC Server ──────────────────────────────────────────────────────────
-	addr := config.Conf.Service["user"].Address
+	svcCfg, ok := config.Conf.Service["content"]
+	if !ok {
+		log.Fatalf("config: 缺少 service.content 配置")
+	}
+	addr := svcCfg.Address
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("listen %s: %v", addr, err)
@@ -66,30 +67,28 @@ func main() {
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
-	user_pb.RegisterUserServiceServer(grpcServer, &service.UserServiceServer{})
+	pb.RegisterContentServiceServer(grpcServer, &content_service.ContentServiceServer{})
 
-	// 注册到 etcd 服务发现（必须在 net.Listen 成功后，确保只通告已绑定的地址）
-	serviceName := config.Conf.Service["user"].Name
-	regCleanup, err := discovery.Register(context.Background(), serviceName, addr)
+	// 注册到 etcd 服务发现
+	regCleanup, err := discovery.Register(context.Background(), svcCfg.Name, addr)
 	if err != nil {
 		log.Fatalf("register to etcd: %v", err)
 	}
 
-	fmt.Printf("[user-service] gRPC listening on %s\n", addr)
+	fmt.Printf("[content-service] gRPC listening on %s\n", addr)
 
-	// ── Graceful shutdown ────
+	// ── Graceful shutdown ───────────────────────────────────────────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		if err = grpcServer.Serve(lis); err != nil {
-			log.Printf("[user-service] serve error: %v", err)
+			log.Printf("[content-service] serve error: %v", err)
 		}
 	}()
 
 	<-quit
-	fmt.Println("[user-service] shutting down…")
-	// 先从 etcd 注销，再停止接收新请求；已建立连接继续处理完
+	fmt.Println("[content-service] shutting down…")
 	regCleanup()
 	grpcServer.GracefulStop()
 }
