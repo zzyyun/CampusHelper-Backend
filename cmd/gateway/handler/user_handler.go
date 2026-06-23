@@ -11,6 +11,7 @@ import (
 	user_pb "go_projects/praProject1/PB/pb/user_pb"
 	"go_projects/praProject1/cmd/gateway/client"
 	"go_projects/praProject1/cmd/gateway/middleware"
+	"go_projects/praProject1/pkg/errcode"
 )
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -31,16 +32,17 @@ type updateUserInfoReq struct {
 
 // ─── POST /api/v1/user/login ─────────────────────────────────────────────────
 
+// WxLogin 微信登录入口。错误响应走统一格式（gRPC Code → 业务码）。
 func WxLogin(c *gin.Context) {
 	var req wxLoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
 		return
 	}
 
 	resp, err := client.UserClient.WxLogin(baseCtx(c), &user_pb.WxLoginRequest{JsCode: req.Code})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.GRPCErrorResponse(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -52,10 +54,11 @@ func WxLogin(c *gin.Context) {
 
 // ─── PUT /api/v1/user/campus  (JWT) ───────────
 
+// BindCampus 用户绑定学校。
 func BindCampus(c *gin.Context) {
 	var req bindCampusReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
 		return
 	}
 
@@ -68,11 +71,15 @@ func BindCampus(c *gin.Context) {
 		SchoolName: req.SchoolName,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.GRPCErrorResponse(c, err)
 		return
 	}
 	if resp.Code != 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": resp.Message})
+		c.JSON(errcode.HTTPStatus(int(resp.Code)), gin.H{
+			"code":     resp.Code,
+			"message":  resp.Message,
+			"trace_id": c.GetString(middleware.CtxTraceID),
+		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
@@ -80,6 +87,7 @@ func BindCampus(c *gin.Context) {
 
 // ─── GET /api/v1/user/me  (JWT) ──────────────────────────────────────────────
 
+// GetCurrentUser 获取当前登录用户信息。
 func GetCurrentUser(c *gin.Context) {
 	ctx, ok := authCtx(c)
 	if !ok {
@@ -88,7 +96,7 @@ func GetCurrentUser(c *gin.Context) {
 
 	resp, err := client.UserClient.GetCurrentUser(ctx, &user_pb.GetCurrentUserRequest{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.GRPCErrorResponse(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)
@@ -97,16 +105,17 @@ func GetCurrentUser(c *gin.Context) {
 // ─── PUT /api/v1/user/info  (JWT) ────────────────────────────────────────────
 // 修改当前登录用户的昵称和/或头像。用户身份由 JWT 决定，禁止修改他人资料。
 
+// UpdateUserInfo 更新昵称 / 头像。
 func UpdateUserInfo(c *gin.Context) {
 	var req updateUserInfoReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
 		return
 	}
 
 	// 至少需要更新一个字段
 	if req.Nickname == "" && req.AvatarURL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "至少需要更新昵称或头像"})
+		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "至少需要更新昵称或头像")
 		return
 	}
 
@@ -120,11 +129,15 @@ func UpdateUserInfo(c *gin.Context) {
 		AvatarUrl: req.AvatarURL,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.GRPCErrorResponse(c, err)
 		return
 	}
 	if resp.Code != 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": resp.Message})
+		c.JSON(errcode.HTTPStatus(int(resp.Code)), gin.H{
+			"code":     resp.Code,
+			"message":  resp.Message,
+			"trace_id": c.GetString(middleware.CtxTraceID),
+		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
@@ -132,13 +145,12 @@ func UpdateUserInfo(c *gin.Context) {
 
 // ─── context helpers ─────────────────────────────────────────────────────────
 
-// baseCtx extracts the request's context (carries OTel trace from Trace middleware).
+// baseCtx 提取请求 context（携带 OTel trace 上下文）。
 func baseCtx(c *gin.Context) context.Context {
 	return c.Request.Context()
 }
 
-// authCtx forwards JWT-extracted user identity to the downstream gRPC service
-// via metadata so the service can identify the caller.
+// authCtx 转发 JWT 解析出的用户身份到下游 gRPC metadata。
 //
 // 返回 ok=false 时表示身份缺失或格式异常，此时已写入 401 响应，调用方必须
 // 直接 return，不得继续发起 gRPC 调用。这样"身份丢失"会在网关层就暴露，
@@ -147,12 +159,12 @@ func authCtx(c *gin.Context) (context.Context, bool) {
 	v, exists := c.Get(middleware.CtxUserID)
 	if !exists {
 		// JWTAuth 中间件未执行或认证失败
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "auth未认证：缺少用户身份"})
+		middleware.ErrorResponse(c, errcode.ErrMissingToken, "缺少用户身份")
 		return nil, false
 	}
 	uid, ok := v.(int64)
 	if !ok {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		middleware.ErrorResponse(c, errcode.ErrInvalidToken, "未认证")
 		return nil, false
 	}
 

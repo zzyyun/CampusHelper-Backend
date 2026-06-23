@@ -1,15 +1,16 @@
 package middleware
 
 import (
-	"net/http"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"go_projects/praProject1/config"
+	"go_projects/praProject1/pkg/errcode"
+
+	"github.com/gin-gonic/gin"
 )
 
-// ipBucket is a simple token-bucket per IP.
+// ipBucket 单 IP 的令牌桶状态。
 type ipBucket struct {
 	tokens   float64
 	lastSeen time.Time
@@ -32,7 +33,9 @@ func getBucket(ip string) *ipBucket {
 	return b
 }
 
-// RateLimit is a per-IP token-bucket rate limiter Gin middleware.
+// RateLimit 基于令牌桶的 IP 级别限流。
+//
+// 超限时统一返回 30001 rate limit exceeded。
 func RateLimit() gin.HandlerFunc {
 	rate := config.Conf.Gateway.RateLimit
 	burst := float64(config.Conf.Gateway.RateBurst)
@@ -52,7 +55,7 @@ func RateLimit() gin.HandlerFunc {
 		b.lastSeen = now
 
 		if b.tokens < 1 {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+			ErrorResponse(c, errcode.ErrRateLimited, "请求过于频繁，请稍后再试")
 			return
 		}
 		b.tokens--
