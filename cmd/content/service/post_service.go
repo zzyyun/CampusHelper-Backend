@@ -14,6 +14,7 @@ import (
 	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
 	"go_projects/praProject1/pkg/contextx"
+	es_pkg "go_projects/praProject1/pkg/es"
 	"go_projects/praProject1/pkg/mq"
 )
 
@@ -300,9 +301,81 @@ func (s *ContentServiceServer) ListComments(ctx context.Context, req *pb.ListCom
 	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
 }
 
-// SearchContent 搜索内容（Phase 1 占位，ES 接入待实现）
+// esClient 全局 ES 客户端，由 InitES 初始化。
+var esClient *es_pkg.Client
+
+// InitES 初始化 Elasticsearch 客户端。
+func InitES(addrs []string) {
+	var err error
+	esClient, err = es_pkg.NewClient(addrs, "campus_posts")
+	if err != nil {
+		log.Printf("[content-service] ES 初始化失败（搜索功能降级）: %v", err)
+		return
+	}
+	log.Printf("[content-service] ES 客户端已初始化（索引: campus_posts）")
+}
+
+// SearchContent 搜索内容（ES 关键词搜索 + 分类筛选）。
+//
+// 搜索维度：
+//   - keyword：同时匹配 title 和 content 字段
+//   - type：帖子分类筛选（可选）
+//   - category：物品分类筛选（可选）
+//   - status：状态筛选（可选，默认已发布）
+//   - page/page_size：分页
+//   - sort：排序方式（默认按创建时间倒序）
 func (s *ContentServiceServer) SearchContent(ctx context.Context, req *pb.SearchContentRequest) (*pb.SearchContentResponse, error) {
-	return nil, fmt.Errorf("%w: 搜索功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 {
+		return nil, fmt.Errorf("%w: school_id 必须为正数", errInvalidArgument)
+	}
+	if esClient == nil {
+		return nil, fmt.Errorf("搜索服务暂不可用（ES 未连接）")
+	}
+	if strings.TrimSpace(req.Keyword) == "" {
+		return nil, fmt.Errorf("%w: 搜索关键词不能为空", errInvalidArgument)
+	}
+
+	// 默认值处理
+	page := int(req.Page)
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 20
+	}
+	from := (page - 1) * pageSize
+
+	// 构建 ES 搜索查询
+	queryJSON := buildSearchQuery(req.SchoolId, req.Keyword, req.Type, req.Category, req.Status, from, pageSize, req.Sort)
+	result, err := esClient.Search(ctx, queryJSON)
+	if err != nil {
+		return nil, fmt.Errorf("搜索失败: %w", err)
+	}
+
+	// 映射搜索结果
+	posts := make([]*pb.Post, 0, len(result.Hits.Hits))
+	for _, hit := range result.Hits.Hits {
+		doc := &content_db.Post{
+			ID:           hit.Source.PostID,
+			SchoolID:     hit.Source.SchoolID,
+			UserID:       hit.Source.UserID,
+			Type:         hit.Source.Type,
+			Title:        hit.Source.Title,
+			Content:      hit.Source.Content,
+			Status:       content_db.PostStatus(hit.Source.Status),
+			LikesCount:   hit.Source.LikesCount,
+			CommentCount: hit.Source.CommentCount,
+		}
+		posts = append(posts, toPbPost(doc))
+	}
+
+	return &pb.SearchContentResponse{
+		Posts:    posts,
+		Total:    result.Hits.Total.Value,
+		Page:     int32(page),
+		PageSize: int32(pageSize),
+	}, nil
 }
 
 // ApprovePost 审核通过（pending → published，发布 MQ 事件触发 ES 同步）。
@@ -520,6 +593,48 @@ func traceIDFromContext(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// buildSearchQuery 构建 ES 搜索查询 JSON。
+// 查询维度：school_id（必须）+ keyword（必须） + type/category/status（可选）。
+func buildSearchQuery(schoolID int64, keyword string, postType pb.PostType, category pb.ItemCategory,
+	status pb.PostStatus, from, size int, sort common_pb.SortType) string {
+
+	// 构建 filter 子句（可叠加）
+	var filters []string
+	filters = append(filters, fmt.Sprintf(`{"term":{"school_id":%d}}`, schoolID))
+
+	if postType != pb.PostType_POST_TYPE_UNSPECIFIED {
+		filters = append(filters, fmt.Sprintf(`{"term":{"type":%d}}`, postType))
+	}
+
+	if category != pb.ItemCategory_ITEM_CATEGORY_UNSPECIFIED {
+		// 分类同时匹配失物招领和二手交易的分类字段
+		filters = append(filters,
+			fmt.Sprintf(`{"bool":{"should":[{"term":{"lf_category":%d}},{"term":{"sh_category":%d}}]}}`, category, category))
+	}
+
+	if status != pb.PostStatus_POST_STATUS_UNSPECIFIED {
+		filters = append(filters, fmt.Sprintf(`{"term":{"status":%d}}`, status))
+	}
+
+	// 构建排序
+	var sortClause string
+	switch sort {
+	case common_pb.SortType_SORT_TYPE_TIME_DESC, common_pb.SortType_SORT_TYPE_UNSPECIFIED:
+		sortClause = `[{"created_at":{"order":"desc"}}]`
+	case common_pb.SortType_SORT_TYPE_LIKES_DESC:
+		sortClause = `[{"likes_count":{"order":"desc"}}]`
+	case common_pb.SortType_SORT_TYPE_RELEVANCE:
+		sortClause = `[{"_score":{"order":"desc"}}]`
+	default:
+		sortClause = `[{"created_at":{"order":"desc"}}]`
+	}
+
+	return fmt.Sprintf(
+		`{"from":%d,"size":%d,"query":{"bool":{"must":[{"multi_match":{"query":%q,"fields":["title","content"],"type":"best_fields"}}],"filter":[%s]}},"sort":%s}`,
+		from, size, keyword, strings.Join(filters, ","), sortClause,
+	)
 }
 
 // ─── 错误常量（Phase 1 简化处理，Phase 2 接入 pkg/errcode） ────────────────
