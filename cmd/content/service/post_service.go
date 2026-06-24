@@ -71,6 +71,17 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		// 雪花 ID 生成失败（时钟回拨等）必须 fail-fast，禁止写入 ID=0 的脏数据
 		return nil, fmt.Errorf("%w: 生成帖子 ID 失败: %v", errInvalidArgument, err)
 	}
+	// 根据帖子类型设置过期时间
+	var expiredAt *time.Time
+	switch req.Type {
+	case pb.PostType_POST_TYPE_LOST_FOUND:
+		t := time.Now().Add(30 * 24 * time.Hour) // 失物招领 30 天
+		expiredAt = &t
+	case pb.PostType_POST_TYPE_SECOND_HAND:
+		t := time.Now().Add(60 * 24 * time.Hour) // 二手交易 60 天
+		expiredAt = &t
+	}
+
 	post := &content_db.Post{
 		ID:         postID,
 		SchoolID:   req.SchoolId,
@@ -80,6 +91,7 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		Content:    req.Content,
 		ImagesJSON: imagesJSON,
 		Status:     content_db.PostStatusPending, // 默认进入审核中
+		ExpiredAt:  expiredAt,
 	}
 
 	// ── 4. 填充业务扩展字段 ────────────────────────────────────────────
@@ -603,6 +615,67 @@ func (s *ContentServiceServer) TakedownPost(ctx context.Context, req *pb.Takedow
 	publishEventRaw(event)
 
 	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil}
+
+// MarkRetrieved 标记失物已认领（published → retrieved）。
+// 仅作者本人可操作，仅失物招领类型支持此状态。
+func (s *ContentServiceServer) MarkRetrieved(ctx context.Context, schoolID, postID, userID int64) (*pb.Post, error) {
+	return s.markPostStatus(ctx, schoolID, postID, userID,
+		content_db.PostStatusPublished, content_db.PostStatusRetrieved)
+}
+
+// MarkSold 标记二手已售出（published → sold）。
+// 仅作者本人可操作，仅二手交易类型支持此状态。
+func (s *ContentServiceServer) MarkSold(ctx context.Context, schoolID, postID, userID int64) (*pb.Post, error) {
+	return s.markPostStatus(ctx, schoolID, postID, userID,
+		content_db.PostStatusPublished, content_db.PostStatusSold)
+}
+
+// markPostStatus 通用的帖子状态变更（published → 终态）。
+func (s *ContentServiceServer) markPostStatus(ctx context.Context, schoolID, postID, userID int64,
+	from, to content_db.PostStatus) (*pb.Post, error) {
+
+	post, err := repo.GetByID(schoolID, postID)
+	if err != nil {
+		return nil, fmt.Errorf("查询帖子: %w", err)
+	}
+	if post.UserID != userID {
+		return nil, fmt.Errorf("%w: 仅作者本人可操作", errForbidden)
+	}
+	if post.Status != from {
+		return nil, fmt.Errorf("%w: 当前状态不允许此操作", errInvalidArgument)
+	}
+
+	if err := repo.UpdateReview(schoolID, postID, from, to, userID, ""); err != nil {
+		return nil, fmt.Errorf("状态变更失败: %w", err)
+	}
+
+	// 重新查询最新状态
+	post, _ = repo.GetByID(schoolID, postID)
+	return toPbPost(post), nil
+}
+
+// RenewPost 续期帖子（仅作者本人，published 状态，最多 3 次）。
+// 每次续期延长 30 天。
+func (s *ContentServiceServer) RenewPost(ctx context.Context, schoolID, postID, userID int64) error {
+	post, err := repo.GetByID(schoolID, postID)
+	if err != nil {
+		return fmt.Errorf("查询帖子: %w", err)
+	}
+	if post.UserID != userID {
+		return fmt.Errorf("%w: 仅作者本人可操作", errForbidden)
+	}
+	if post.Status != content_db.PostStatusPublished {
+		return fmt.Errorf("%w: 仅已发布帖子可续期", errInvalidArgument)
+	}
+
+	newExpired := time.Now().Add(30 * 24 * time.Hour)
+	fields := map[string]interface{}{"expired_at": newExpired}
+	if err := repo.UpdateOwned(schoolID, userID, postID, fields); err != nil {
+		return fmt.Errorf("续期失败: %w", err)
+	}
+	log.Printf("[content-service] 帖子续期成功 post=%d new_expired=%s", postID, newExpired.Format(time.RFC3339))
+	return nil
+}
 
 // ─── MQ 辅助函数 ─────────────────────────────────────────────────────────────
 
