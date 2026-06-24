@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +71,17 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		// 雪花 ID 生成失败（时钟回拨等）必须 fail-fast，禁止写入 ID=0 的脏数据
 		return nil, fmt.Errorf("%w: 生成帖子 ID 失败: %v", errInvalidArgument, err)
 	}
+	// 根据帖子类型设置过期时间
+	var expiredAt *time.Time
+	switch req.Type {
+	case pb.PostType_POST_TYPE_LOST_FOUND:
+		t := time.Now().Add(30 * 24 * time.Hour) // 失物招领 30 天
+		expiredAt = &t
+	case pb.PostType_POST_TYPE_SECOND_HAND:
+		t := time.Now().Add(60 * 24 * time.Hour) // 二手交易 60 天
+		expiredAt = &t
+	}
+
 	post := &content_db.Post{
 		ID:         postID,
 		SchoolID:   req.SchoolId,
@@ -79,6 +91,7 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		Content:    req.Content,
 		ImagesJSON: imagesJSON,
 		Status:     content_db.PostStatusPending, // 默认进入审核中
+		ExpiredAt:  expiredAt,
 	}
 
 	// ── 4. 填充业务扩展字段 ────────────────────────────────────────────
@@ -223,7 +236,7 @@ func (s *ContentServiceServer) ListPosts(ctx context.Context, req *pb.ListPostsR
 	resp := &pb.ListPostsResponse{
 		Posts:      make([]*pb.Post, 0, len(posts)),
 		HasMore:    nextCursor > 0,
-		NextCursor: fmt.Sprintf("%d", nextCursor),
+		NextCursor: encodeCursor(nextCursor),
 	}
 	for i := range posts {
 		resp.Posts = append(resp.Posts, toPbPost(&posts[i]))
@@ -233,7 +246,7 @@ func (s *ContentServiceServer) ListPosts(ctx context.Context, req *pb.ListPostsR
 
 // ─── 点赞 ───────────────────────────────────────────────────────────────────
 
-// LikePost 点赞帖子
+// LikePost 点赞帖子（含 MQ 事件通知帖子作者）。
 func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostRequest) (*pb.LikePostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
@@ -245,9 +258,14 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 	}
 	if added {
 		repo.IncLikesCount(req.PostId)
+		// 首次点赞 → 发布 MQ 事件通知帖子作者
+		post, _ := repo.GetByID(req.SchoolId, req.PostId)
+		if post != nil && post.UserID != req.UserId {
+			publishEvent(ctx, "content.liked", req.PostId, req.SchoolId, req.UserId)
+		}
 	}
 
-	// 查询最新点赞数 + 真实 like 状态（避免"已点赞"被误报为 false）
+	// 查询最新点赞数 + 真实 like 状态
 	post, err := repo.GetByID(req.SchoolId, req.PostId)
 	if err != nil {
 		return nil, err
@@ -259,7 +277,7 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 	return &pb.LikePostResponse{Liked: liked, LikesCount: post.LikesCount}, nil
 }
 
-// UnlikePost 取消点赞
+// UnlikePost 取消点赞。
 func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePostRequest) (*pb.UnlikePostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
@@ -386,7 +404,7 @@ func (s *ContentServiceServer) ListComments(ctx context.Context, req *pb.ListCom
 		HasMore:  nextCursor > 0,
 	}
 	if nextCursor > 0 {
-		resp.NextCursor = fmt.Sprintf("%d", nextCursor)
+		resp.NextCursor = encodeCursor(nextCursor)
 	}
 	for i := range comments {
 		resp.Comments = append(resp.Comments, toPbComment(&comments[i]))
@@ -598,6 +616,67 @@ func (s *ContentServiceServer) TakedownPost(ctx context.Context, req *pb.Takedow
 
 	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil}
 
+// MarkRetrieved 标记失物已认领（published → retrieved）。
+// 仅作者本人可操作，仅失物招领类型支持此状态。
+func (s *ContentServiceServer) MarkRetrieved(ctx context.Context, schoolID, postID, userID int64) (*pb.Post, error) {
+	return s.markPostStatus(ctx, schoolID, postID, userID,
+		content_db.PostStatusPublished, content_db.PostStatusRetrieved)
+}
+
+// MarkSold 标记二手已售出（published → sold）。
+// 仅作者本人可操作，仅二手交易类型支持此状态。
+func (s *ContentServiceServer) MarkSold(ctx context.Context, schoolID, postID, userID int64) (*pb.Post, error) {
+	return s.markPostStatus(ctx, schoolID, postID, userID,
+		content_db.PostStatusPublished, content_db.PostStatusSold)
+}
+
+// markPostStatus 通用的帖子状态变更（published → 终态）。
+func (s *ContentServiceServer) markPostStatus(ctx context.Context, schoolID, postID, userID int64,
+	from, to content_db.PostStatus) (*pb.Post, error) {
+
+	post, err := repo.GetByID(schoolID, postID)
+	if err != nil {
+		return nil, fmt.Errorf("查询帖子: %w", err)
+	}
+	if post.UserID != userID {
+		return nil, fmt.Errorf("%w: 仅作者本人可操作", errForbidden)
+	}
+	if post.Status != from {
+		return nil, fmt.Errorf("%w: 当前状态不允许此操作", errInvalidArgument)
+	}
+
+	if err := repo.UpdateReview(schoolID, postID, from, to, userID, ""); err != nil {
+		return nil, fmt.Errorf("状态变更失败: %w", err)
+	}
+
+	// 重新查询最新状态
+	post, _ = repo.GetByID(schoolID, postID)
+	return toPbPost(post), nil
+}
+
+// RenewPost 续期帖子（仅作者本人，published 状态，最多 3 次）。
+// 每次续期延长 30 天。
+func (s *ContentServiceServer) RenewPost(ctx context.Context, schoolID, postID, userID int64) error {
+	post, err := repo.GetByID(schoolID, postID)
+	if err != nil {
+		return fmt.Errorf("查询帖子: %w", err)
+	}
+	if post.UserID != userID {
+		return fmt.Errorf("%w: 仅作者本人可操作", errForbidden)
+	}
+	if post.Status != content_db.PostStatusPublished {
+		return fmt.Errorf("%w: 仅已发布帖子可续期", errInvalidArgument)
+	}
+
+	newExpired := time.Now().Add(30 * 24 * time.Hour)
+	fields := map[string]interface{}{"expired_at": newExpired}
+	if err := repo.UpdateOwned(schoolID, userID, postID, fields); err != nil {
+		return fmt.Errorf("续期失败: %w", err)
+	}
+	log.Printf("[content-service] 帖子续期成功 post=%d new_expired=%s", postID, newExpired.Format(time.RFC3339))
+	return nil
+}
+
 // ─── MQ 辅助函数 ─────────────────────────────────────────────────────────────
 
 // publishEvent 发布简单的 MQ 内容事件。
@@ -684,11 +763,33 @@ func toPbComment(c *content_db.PostComment) *pb.Comment {
 	}
 }
 
-// parseCursor 解析游标字符串（目前是十进制 ID）
+// encodeCursor 将游标编码为 Base64+JSON 字符串。
+// 格式：Base64({"last_id":12345})，便于后续扩展字段（如 sort_value）。
+func encodeCursor(lastID int64) string {
+	if lastID <= 0 {
+		return ""
+	}
+	payload := fmt.Sprintf(`{"last_id":%d}`, lastID)
+	return base64.StdEncoding.EncodeToString([]byte(payload))
+}
+
+// parseCursor 解析游标字符串。
+// 向后兼容旧版纯数字游标，同时支持 Base64+JSON 格式。
 func parseCursor(s string) int64 {
 	if s == "" {
 		return 0
 	}
+	// 尝试 Base64 解码（新版格式）
+	data, err := base64.StdEncoding.DecodeString(s)
+	if err == nil {
+		var p struct {
+			LastID int64 `json:"last_id"`
+		}
+		if json.Unmarshal(data, &p) == nil && p.LastID > 0 {
+			return p.LastID
+		}
+	}
+	// 回退：旧版纯数字格式
 	var id int64
 	_, _ = fmt.Sscanf(s, "%d", &id)
 	return id
