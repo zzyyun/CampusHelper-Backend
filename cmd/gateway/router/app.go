@@ -51,6 +51,31 @@ func NewRouter() *gin.Engine {
 		}
 	}
 
+	// Content Service – authenticated routes (Issue #22)
+	//   11 个接口：帖子 CRUD / 评论 / 点赞 / 搜索
+	//   - 读路由（List/Get/Search/ListComments）：仅 JWT，未绑定学校也能浏览
+	//   - 写路由（Create/Update/Delete/Like/Comment）：JWT + RequireSchoolBound
+	content := v1.Group("/content", middleware.JWTAuth())
+	{
+		// 读
+		content.GET("/posts", handler.ListPosts)                    // 列表
+		content.GET("/posts/:id", handler.GetPost)                  // 详情
+		content.GET("/posts/:id/comments", handler.ListComments)    // 评论列表
+		content.POST("/search", handler.SearchContent)              // 关键词搜索
+
+		// 写：JWT + 学校绑定
+		write := content.Group("", middleware.RequireSchoolBound())
+		{
+			write.POST("/posts", handler.CreatePost)                       // 发帖
+			write.PUT("/posts/:id", handler.UpdatePost)                    // 编辑
+			write.DELETE("/posts/:id", handler.DeletePost)                  // 删帖
+			write.POST("/posts/:id/like", handler.LikePost)                // 点赞
+			write.DELETE("/posts/:id/like", handler.UnlikePost)             // 取消点赞
+			write.POST("/comments", handler.CreateComment)                  // 写评论
+			write.DELETE("/comments/:id", handler.DeleteComment)            // 删评论
+		}
+	}
+
 	return r
 }
 
