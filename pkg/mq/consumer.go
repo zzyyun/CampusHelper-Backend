@@ -74,8 +74,57 @@ func (c *Consumer) Connect() error {
 
 // Start 开始消费消息（阻塞调用）。
 // 连接失败时自动重试（指数退避，最大 30s）。
+// 断连后自动重连并重新订阅。
 func (c *Consumer) Start(ctx context.Context) error {
 	// 首次连接
+	if err := c.connectWithRetry(ctx); err != nil {
+		return err
+	}
+
+	log.Printf("[MQ-Consumer] 开始消费队列: %s", c.queue)
+
+	for {
+		// 每次循环重新获取 consume channel（重连后 channel 会变）
+		c.mu.Lock()
+		ch := c.channel
+		c.mu.Unlock()
+
+		msgs, err := ch.Consume(c.queue, "", false, false, false, false, nil)
+		if err != nil {
+			log.Printf("[MQ-Consumer] 消费失败: %v，尝试重连...", err)
+			if err := c.reconnect(ctx); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// 消息处理循环
+		for {
+			select {
+			case msg, ok := <-msgs:
+				if !ok {
+					log.Printf("[MQ-Consumer] 消息通道关闭，尝试重连...")
+					if err := c.reconnect(ctx); err != nil {
+						return err
+					}
+					break // 跳出内层循环，重新 Consume
+				}
+				c.handleMessage(msg)
+
+			case <-ctx.Done():
+				log.Printf("[MQ-Consumer] 收到 ctx 取消，停止消费")
+				return ctx.Err()
+
+			case <-c.stopCh:
+				log.Printf("[MQ-Consumer] 收到停止信号")
+				return nil
+			}
+		}
+	}
+}
+
+// connectWithRetry 带重试的连接。
+func (c *Consumer) connectWithRetry(ctx context.Context) error {
 	for {
 		if err := c.Connect(); err != nil {
 			log.Printf("[MQ-Consumer] 连接失败，5s 后重试: %v", err)
@@ -88,37 +137,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 				return nil
 			}
 		}
-		break
-	}
-
-	// 开始消费
-	msgs, err := c.channel.Consume(c.queue, "", false, false, false, false, nil)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("[MQ-Consumer] 开始消费队列: %s", c.queue)
-
-	for {
-		select {
-		case msg, ok := <-msgs:
-			if !ok {
-				log.Printf("[MQ-Consumer] 消息通道关闭，尝试重连...")
-				if err := c.reconnect(ctx); err != nil {
-					return err
-				}
-				continue
-			}
-			c.handleMessage(msg)
-
-		case <-ctx.Done():
-			log.Printf("[MQ-Consumer] 收到 ctx 取消，停止消费")
-			return ctx.Err()
-
-		case <-c.stopCh:
-			log.Printf("[MQ-Consumer] 收到停止信号")
-			return nil
-		}
+		return nil
 	}
 }
 
@@ -180,15 +199,6 @@ func (c *Consumer) reconnect(ctx context.Context) error {
 			continue
 		}
 
-		// 重连成功后重新开始消费
-		msgs, err := c.channel.Consume(c.queue, "", false, false, false, false, nil)
-		if err != nil {
-			log.Printf("[MQ-Consumer] 重连后消费失败: %v", err)
-			continue
-		}
-		// 将 msgs 赋给外部循环使用（这里通过递归/重入 Start 实现）
-		// 简化处理：重置 backoff
-		_ = msgs
 		log.Printf("[MQ-Consumer] 重连成功")
 		return nil
 	}
