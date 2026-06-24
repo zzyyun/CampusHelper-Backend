@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package pb;
-option go_package = "go_projects/praProject1/PB/pb/user_pb";
+option go_package = "/user_pb";
 
 import "google/protobuf/timestamp.proto";
 import "PB/common.proto";
@@ -9,6 +9,9 @@ import "PB/common.proto";
 service UserService{
   // 微信小程序专属登录
   rpc WxLogin (WxLoginRequest) returns (WxLoginResponse);
+
+  // 用 Refresh Token 换取新 Access Token（前端在 access_token 过期后调用）
+  rpc RefreshToken (RefreshTokenRequest) returns (RefreshTokenResponse);
 
   // 校园实名认证 & 绑定学校 (核心隔离字段)
   rpc BindCampus (BindCampusRequest) returns (pb.BaseResponse);
@@ -26,8 +29,19 @@ message WxLoginRequest {
 
 message WxLoginResponse {
   string access_token = 1;
-  bool is_bound_campus = 2; // 标记是否已绑定学校，未绑定则前端强制跳转绑定页
-  int64 school_id = 3;     // 已绑定的学校ID
+  bool is_bound_campus = 2;  // 标记是否已绑定学校，未绑定则前端强制跳转绑定页
+  int64 school_id = 3;      // 已绑定的学校ID
+  string refresh_token = 4; // 刷新令牌（默认 7 天），用于在 access_token 过期后换取新令牌
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1; // 客户端持有的 Refresh Token
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;  // 续签后的新 Access Token（默认 24h）
+  int64 school_id = 2;      // 用户当前学校ID（未绑定则为 0），供前端刷新本地缓存
+  bool is_bound_campus = 3; // 同上
 }
 
 message BindCampusRequest {
@@ -42,7 +56,7 @@ message UserInfo {
   int64 user_id = 1;
   string nickname = 2;
   string avatar_url = 3;
-  int64 school_id = 4;     // 【关键】所属学校ID（修复：int64 → uint64）
+  int64 school_id = 4;     // 关键:所属学校ID（修复:int64 → uint64）
   string school_name = 5;   // 冗余学校名称，减少网关聚合调用
   string role = 7;          // student, admin, super_admin
   google.protobuf.Timestamp created_at = 8;

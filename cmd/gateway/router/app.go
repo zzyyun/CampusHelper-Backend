@@ -31,7 +31,8 @@ func NewRouter() *gin.Engine {
 	// User Service – public routes
 	userPublic := v1.Group("/user")
 	{
-		userPublic.POST("/login", handler.WxLogin) // WeChat login → JWT
+		userPublic.POST("/login", handler.WxLogin)   // WeChat login → 双 Token
+		userPublic.POST("/refresh", handler.RefreshToken) // Refresh Token → 新 Access Token
 	}
 
 	// User Service – authenticated routes

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,8 +20,10 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -78,7 +81,7 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 	wx, err := wxCode2Session(req.GetJsCode())
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, err
 	}
 	span.SetAttributes(attribute.String("wx.openid", wx.OpenID))
@@ -87,7 +90,7 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 	u, isNewUser, err := user_database.GetOrCreateByOpenID(wx.OpenID, wx.UnionID, "", "")
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, err
 	}
 
@@ -108,9 +111,14 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 	// 4. 更新 Redis 缓存
 	_ = user_database.SetUserCache(ctx, u)
 
-	// 5. 签发 JWT（含 schoolID，未绑定时为 0，依赖 Issue #19 在网关侧拒绝）
+	// 5. 签发双 Token（Access + Refresh；Refresh 仅含 user_id）
 	jwtCfg := config.Conf.Jwt
-	token, err := pkgjwt.GenerateToken(u.ID, u.SchoolID, int8(u.Role), jwtCfg.AuthKey, jwtCfg.AccessExpireH)
+	accessToken, err := pkgjwt.GenerateAccessToken(u.ID, u.SchoolID, int8(u.Role), jwtCfg.AuthKey, jwtCfg.AccessExpireH)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	refreshToken, err := pkgjwt.GenerateRefreshToken(u.ID, jwtCfg.AuthKey, jwtCfg.RefreshExpireH)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -118,9 +126,65 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 
 	span.SetAttributes(attribute.Int64("user.id", int64(u.ID)))
 	return &user_pb.WxLoginResponse{
-		AccessToken:   token,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
 		IsBoundCampus: u.SchoolID != 0,
 		SchoolId:      u.SchoolID,
+	}, nil
+}
+
+// ─── Refresh Token ───────────────────────────────────────────────────────────
+
+// RefreshToken 用 refresh_token 换取新 access_token。
+//
+// 流程：
+//  1. 解析 refresh_token，得到 user_id
+//  2. 从 DB 重新读取用户（school_id/role 可能有变更）
+//  3. 重新签发 access_token
+//
+// 返回值说明：
+//   - refresh_token 不过期：返回新 access_token + 最新 school_id/is_bound
+//   - refresh_token 过期：gRPC codes.Unauthenticated → 网关 20004
+//   - refresh_token 非法：gRPC codes.Unauthenticated → 网关 20005
+//   - 用户不存在：gRPC codes.NotFound → 网关 50005
+func (s *UserServiceServer) RefreshToken(ctx context.Context, req *user_pb.RefreshTokenRequest) (*user_pb.RefreshTokenResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.RefreshToken")
+	defer span.End()
+
+	rt := req.GetRefreshToken()
+	if rt == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing refresh token")
+	}
+	claims, err := pkgjwt.ParseRefreshToken(rt, config.Conf.Jwt.AuthKey)
+	if err != nil {
+		if errors.Is(err, pkgjwt.ErrRefreshTokenExpired) {
+			return nil, status.Error(codes.Unauthenticated, "refresh token expired")
+		}
+		return nil, status.Error(codes.Unauthenticated, "refresh token invalid")
+	}
+
+	span.SetAttributes(attribute.Int64("user.id", int64(claims.UserID)))
+
+	// 重新查库获取最新学校/角色
+	u, err := user_database.GetByID(claims.UserID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+
+	jwtCfg := config.Conf.Jwt
+	accessToken, err := pkgjwt.GenerateAccessToken(u.ID, u.SchoolID, int8(u.Role), jwtCfg.AuthKey, jwtCfg.AccessExpireH)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return &user_pb.RefreshTokenResponse{
+		AccessToken:   accessToken,
+		SchoolId:      u.SchoolID,
+		IsBoundCampus: u.SchoolID != 0,
 	}, nil
 }
 
@@ -240,7 +304,7 @@ func (s *UserServiceServer) UpdateUserInfo(ctx context.Context, req *user_pb.Upd
 	u, err := user_database.GetByID(userID)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(otelcodes.Error, err.Error())
 		return &common_pb.BaseResponse{Code: 404, Message: "用户不存在"}, nil
 	}
 
@@ -270,7 +334,7 @@ func (s *UserServiceServer) UpdateUserInfo(ctx context.Context, req *user_pb.Upd
 	// 更新数据库
 	if err = user_database.UpdateUserInfo(userID, nickname, avatarURL); err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(otelcodes.Error, err.Error())
 		return &common_pb.BaseResponse{Code: 500, Message: "更新失败"}, nil
 	}
 

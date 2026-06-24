@@ -30,9 +30,9 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := pkgjwt.ParseToken(tokenStr, config.Conf.Jwt.AuthKey)
+		claims, err := pkgjwt.ParseAccessToken(tokenStr, config.Conf.Jwt.AuthKey)
 		if err != nil {
-			if errors.Is(err, pkgjwt.ErrTokenExpired) {
+			if errors.Is(err, pkgjwt.ErrAccessTokenExpired) {
 				ErrorResponse(c, errcode.ErrTokenExpired, "token 已过期")
 				return
 			}

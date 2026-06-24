@@ -2,11 +2,14 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	user_pb "go_projects/praProject1/PB/pb/user_pb"
 	"go_projects/praProject1/cmd/gateway/client"
@@ -18,6 +21,10 @@ import (
 
 type wxLoginReq struct {
 	Code string `json:"code" binding:"required"`
+}
+
+type refreshReq struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
 type bindCampusReq struct {
@@ -33,6 +40,9 @@ type updateUserInfoReq struct {
 // ─── POST /api/v1/user/login ─────────────────────────────────────────────────
 
 // WxLogin 微信登录入口。错误响应走统一格式（gRPC Code → 业务码）。
+//
+// 返回 access_token + refresh_token；前端应在 access 过期后用 refresh
+// 调 POST /user/refresh 续签。
 func WxLogin(c *gin.Context) {
 	var req wxLoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -44,6 +54,47 @@ func WxLogin(c *gin.Context) {
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":    resp.AccessToken,
+		"refresh_token":   resp.RefreshToken,
+		"is_bound_campus": resp.IsBoundCampus,
+		"school_id":       resp.SchoolId,
+	})
+}
+
+// ─── POST /api/v1/user/refresh  (白名单：无 JWT) ────────────────────────────
+
+// RefreshToken 用 refresh_token 换取新的 access_token。
+//
+// 错误约定（覆盖 errcode.FromGRPC 的默认映射，让前端能区分处理）：
+//   - Unauthenticated + 消息含 "expired" → 20004 refresh token 过期
+//   - Unauthenticated + 其他            → 20005 refresh token 无效
+//   - NotFound                          → 20006 + message（用户不存在）
+func RefreshToken(c *gin.Context) {
+	var req refreshReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
+		return
+	}
+
+	resp, err := client.UserClient.RefreshToken(baseCtx(c), &user_pb.RefreshTokenRequest{RefreshToken: req.RefreshToken})
+	if err != nil {
+		st, _ := status.FromError(err)
+		switch st.Code() {
+		case codes.Unauthenticated:
+			// 在 errcode 通用映射基础上细分"过期"与"非法"
+			if errors.Is(err, status.Error(codes.Unauthenticated, "refresh token expired")) ||
+				(st.Message() == "refresh token expired") {
+				middleware.ErrorResponse(c, errcode.ErrRefreshTokenExpired, st.Message())
+				return
+			}
+			middleware.ErrorResponse(c, errcode.ErrRefreshTokenInvalid, st.Message())
+			return
+		default:
+			middleware.GRPCErrorResponse(c, err)
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":    resp.AccessToken,
