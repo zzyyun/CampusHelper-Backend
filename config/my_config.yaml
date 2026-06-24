@@ -48,9 +48,9 @@ gateway:
 service:
   user:
     name: "user-service"
-    address: "127.0.0.1:8101"
+    address: "127.0.0.1:50001"
     loadBalance: false
   content:
     name: "content-service"
-    address: "127.0.0.1:8102"
+    address: "127.0.0.1:50002"
     loadBalance: true
