@@ -108,9 +108,9 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 	// 4. 更新 Redis 缓存
 	_ = user_database.SetUserCache(ctx, u)
 
-	// 5. 签发 JWT
+	// 5. 签发 JWT（含 schoolID，未绑定时为 0，依赖 Issue #19 在网关侧拒绝）
 	jwtCfg := config.Conf.Jwt
-	token, err := pkgjwt.GenerateToken(u.ID, int8(u.Role), jwtCfg.AuthKey, jwtCfg.AccessExpireH)
+	token, err := pkgjwt.GenerateToken(u.ID, u.SchoolID, int8(u.Role), jwtCfg.AuthKey, jwtCfg.AccessExpireH)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
