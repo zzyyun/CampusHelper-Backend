@@ -112,6 +112,11 @@ func TestRequireSchoolBound_WrongType(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("HTTP = %d, want 401", w.Code)
 	}
+	var got errorBody
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Code != errcode.ErrInvalidToken {
+		t.Errorf("code = %d, want %d", got.Code, errcode.ErrInvalidToken)
+	}
 }
 
 // TestRequireSchoolBound_TraceIDPropagated 验证错误响应包含 trace_id。
