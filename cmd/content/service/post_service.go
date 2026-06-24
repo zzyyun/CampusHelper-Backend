@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -223,7 +224,7 @@ func (s *ContentServiceServer) ListPosts(ctx context.Context, req *pb.ListPostsR
 	resp := &pb.ListPostsResponse{
 		Posts:      make([]*pb.Post, 0, len(posts)),
 		HasMore:    nextCursor > 0,
-		NextCursor: fmt.Sprintf("%d", nextCursor),
+		NextCursor: encodeCursor(nextCursor),
 	}
 	for i := range posts {
 		resp.Posts = append(resp.Posts, toPbPost(&posts[i]))
@@ -386,7 +387,7 @@ func (s *ContentServiceServer) ListComments(ctx context.Context, req *pb.ListCom
 		HasMore:  nextCursor > 0,
 	}
 	if nextCursor > 0 {
-		resp.NextCursor = fmt.Sprintf("%d", nextCursor)
+		resp.NextCursor = encodeCursor(nextCursor)
 	}
 	for i := range comments {
 		resp.Comments = append(resp.Comments, toPbComment(&comments[i]))
@@ -684,11 +685,33 @@ func toPbComment(c *content_db.PostComment) *pb.Comment {
 	}
 }
 
-// parseCursor 解析游标字符串（目前是十进制 ID）
+// encodeCursor 将游标编码为 Base64+JSON 字符串。
+// 格式：Base64({"last_id":12345})，便于后续扩展字段（如 sort_value）。
+func encodeCursor(lastID int64) string {
+	if lastID <= 0 {
+		return ""
+	}
+	payload := fmt.Sprintf(`{"last_id":%d}`, lastID)
+	return base64.StdEncoding.EncodeToString([]byte(payload))
+}
+
+// parseCursor 解析游标字符串。
+// 向后兼容旧版纯数字游标，同时支持 Base64+JSON 格式。
 func parseCursor(s string) int64 {
 	if s == "" {
 		return 0
 	}
+	// 尝试 Base64 解码（新版格式）
+	data, err := base64.StdEncoding.DecodeString(s)
+	if err == nil {
+		var p struct {
+			LastID int64 `json:"last_id"`
+		}
+		if json.Unmarshal(data, &p) == nil && p.LastID > 0 {
+			return p.LastID
+		}
+	}
+	// 回退：旧版纯数字格式
 	var id int64
 	_, _ = fmt.Sscanf(s, "%d", &id)
 	return id
