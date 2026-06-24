@@ -5,19 +5,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	content_db "go_projects/praProject1/cmd/content/model"
 	"go_projects/praProject1/cmd/content/repo"
 	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
 	"go_projects/praProject1/pkg/contextx"
+	"go_projects/praProject1/pkg/mq"
 )
 
 // ContentServiceServer 实现 gRPC ContentService 接口
 // 遵循 docs/content-service-prd.md §5.1
 type ContentServiceServer struct {
 	pb.UnimplementedContentServiceServer
+}
+
+// mqPublisher 全局消息发布者，由 main.go 中的 InitMQ 初始化。
+// 若未初始化（nil），审核操作仅记录日志不发布消息。
+var mqPublisher *mq.Publisher
+
+// InitMQ 初始化 RabbitMQ 发布者。
+// addr 格式: amqp://user:pass@host:port/
+func InitMQ(addr string) {
+	mqPublisher = mq.NewPublisher(addr, "content.events")
+	log.Printf("[content-service] MQ Publisher 已初始化（队列: content.events）")
 }
 
 // ─── 帖子 CRUD ──────────────────────────────────────────────────────────────
@@ -291,43 +305,151 @@ func (s *ContentServiceServer) SearchContent(ctx context.Context, req *pb.Search
 	return nil, fmt.Errorf("%w: 搜索功能待实现", errUnimplemented)
 }
 
-// ApprovePost 审核通过（pending → published，Phase 1 占位）
+// ApprovePost 审核通过（pending → published，发布 MQ 事件触发 ES 同步）。
+//
+// 流程：
+//  1. 校验参数（school_id > 0, post_id > 0）
+//  2. 先查询帖子获取 user_id（用于 MQ 事件），再状态机校验（仅 pending 可审核通过）
+//  3. 原子更新：status=published + reviewer_id + reviewed_at
+//  4. 发送 MQ content.published 事件（best-effort，失败不阻塞审核）
 func (s *ContentServiceServer) ApprovePost(ctx context.Context, req *pb.ApprovePostRequest) (*pb.ApprovePostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
 	}
-	if err := repo.UpdateStatus(req.SchoolId, req.PostId,
-		content_db.PostStatusPending, content_db.PostStatusPublished); err != nil {
+
+	// 先查询帖子（用于校验状态 + 获取 user_id 构造 MQ 事件）
+	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 帖子不存在", errNotFound)
+		}
+		return nil, err
+	}
+
+	// 状态机校验
+	if post.Status != content_db.PostStatusPending {
+		return nil, fmt.Errorf("%w: 只有待审核（pending）状态可以审核通过，当前状态 %d", errInvalidArgument, post.Status)
+	}
+
+	// 原子更新状态 + 审核信息
+	if err := repo.UpdateReview(req.SchoolId, req.PostId,
+		content_db.PostStatusPending, content_db.PostStatusPublished,
+		req.ReviewerId, ""); err != nil {
 		return nil, fmt.Errorf("approve: %w", err)
 	}
+
+	// 发送 MQ 事件（best-effort，失败不阻塞审核结果）
+	publishEvent(ctx, mq.EventContentPublished, post.ID, post.SchoolID, post.UserID)
+
 	return &pb.ApprovePostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_PUBLISHED}, nil
 }
 
-// RejectPost 审核拒绝（pending → rejected，Phase 1 占位）
+// RejectPost 审核拒绝（pending → rejected，需填拒绝原因，发布 MQ 事件通知用户）。
+//
+// 流程：
+//  1. 校验参数 + 拒绝原因非空
+//  2. 状态机校验（仅 pending 可审核拒绝）
+//  3. 原子更新：status=rejected + reviewer_id + reviewed_at + reject_reason
+//  4. 发送 MQ content.review_result 事件（通知用户审核未通过）
 func (s *ContentServiceServer) RejectPost(ctx context.Context, req *pb.RejectPostRequest) (*pb.RejectPostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
 	}
-	if strings.TrimSpace(req.Reason) == "" {
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
 		return nil, fmt.Errorf("%w: 拒绝原因必填", errInvalidArgument)
 	}
-	if err := repo.UpdateStatus(req.SchoolId, req.PostId,
-		content_db.PostStatusPending, content_db.PostStatusRejected); err != nil {
+
+	// 先查询帖子（校验状态 + 获取 user_id）
+	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 帖子不存在", errNotFound)
+		}
+		return nil, err
+	}
+
+	if post.Status != content_db.PostStatusPending {
+		return nil, fmt.Errorf("%w: 只有待审核（pending）状态可以审核拒绝，当前状态 %d", errInvalidArgument, post.Status)
+	}
+
+	// 原子更新状态 + 审核信息
+	if err := repo.UpdateReview(req.SchoolId, req.PostId,
+		content_db.PostStatusPending, content_db.PostStatusRejected,
+		req.ReviewerId, reason); err != nil {
 		return nil, fmt.Errorf("reject: %w", err)
 	}
+
+	// 发送 MQ 事件（通知用户）
+	event := mq.NewContentEvent(mq.EventContentRejected, post.ID, post.SchoolID, post.UserID,
+		traceIDFromContext(ctx))
+	event.Data["result"] = "rejected"
+	event.Data["reason"] = reason
+	publishEventRaw(event)
+
 	return &pb.RejectPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_REJECTED}, nil
 }
 
-// TakedownPost 违规下架（published → closed，Phase 1 占位）
+// TakedownPost 违规下架（published → closed，发布 MQ 事件通知 ES 删除文档）。
+//
+// 流程：
+//  1. 校验参数
+//  2. 状态机校验（仅 published 可下架）
+//  3. 原子更新：status=closed + reviewer_id + reviewed_at + reject_reason
+//  4. 发送 MQ content.taken_down 事件
 func (s *ContentServiceServer) TakedownPost(ctx context.Context, req *pb.TakedownPostRequest) (*pb.TakedownPostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
 	}
-	if err := repo.UpdateStatus(req.SchoolId, req.PostId,
-		content_db.PostStatusPublished, content_db.PostStatusClosed); err != nil {
+
+	// 先查询帖子
+	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 帖子不存在", errNotFound)
+		}
+		return nil, err
+	}
+
+	if post.Status != content_db.PostStatusPublished {
+		return nil, fmt.Errorf("%w: 只有已发布（published）状态可以下架，当前状态 %d", errInvalidArgument, post.Status)
+	}
+
+	// 原子更新状态 + 审核信息（下架原因存入 reject_reason）
+	if err := repo.UpdateReview(req.SchoolId, req.PostId,
+		content_db.PostStatusPublished, content_db.PostStatusClosed,
+		req.ReviewerId, req.Reason); err != nil {
 		return nil, fmt.Errorf("takedown: %w", err)
 	}
-	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil
+
+	// 发送 MQ 事件
+	event := mq.NewContentEvent(mq.EventContentTakenDown, post.ID, post.SchoolID, post.UserID,
+		traceIDFromContext(ctx))
+	if req.Reason != "" {
+		event.Data["reason"] = req.Reason
+	}
+	publishEventRaw(event)
+
+	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil}
+
+// ─── MQ 辅助函数 ─────────────────────────────────────────────────────────────
+
+// publishEvent 发布简单的 MQ 内容事件。
+func publishEvent(ctx context.Context, eventType string, postID, schoolID, userID int64) {
+	event := mq.NewContentEvent(eventType, postID, schoolID, userID, traceIDFromContext(ctx))
+	publishEventRaw(event)
+}
+
+// publishEventRaw 发布事件（best-effort，失败仅记录日志）。
+func publishEventRaw(event *mq.ContentEvent) {
+	if mqPublisher == nil {
+		log.Printf("[content-service] MQ 未初始化，跳过事件发布: type=%s post=%d", event.Type, event.PostID)
+		return
+	}
+	// 使用独立的 context（不依赖 gRPC ctx 生命周期）
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = mqPublisher.Publish(ctx, event) // Publish 内部已有降级日志
 }
 
 // ─── 辅助函数 ───────────────────────────────────────────────────────────────
@@ -391,6 +513,9 @@ func parseCursor(s string) int64 {
 
 // traceIDFromContext 提取 trace_id（trace 透传在 pkg/middleware 层统一处理）
 func traceIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
 	if v, ok := ctx.Value(contextx.TraceIDKey{}).(string); ok {
 		return v
 	}

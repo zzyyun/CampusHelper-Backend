@@ -3,6 +3,7 @@ package repo
 import (
 	"errors"
 	"log"
+	"time"
 
 	content_db "go_projects/praProject1/cmd/content/model"
 	"go_projects/praProject1/pkg/db"
@@ -118,6 +119,32 @@ func UpdateStatus(schoolID, id int64, from, to content_db.PostStatus) error {
 		Scopes(db.SchoolScope(schoolID)).
 		Where("id = ? AND status = ?", id, from).
 		Update("status", to)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrInvalidTransition
+	}
+	return nil
+}
+
+// UpdateReview 审核操作：原子更新状态 + 审核员 + 审核时间 + 拒绝原因。
+// 若 from 状态不匹配（已被其他操作修改），返回 ErrInvalidTransition。
+func UpdateReview(schoolID, id int64, from, to content_db.PostStatus, reviewerID int64, reason string) error {
+	now := time.Now()
+	fields := map[string]interface{}{
+		"status":      to,
+		"reviewer_id": reviewerID,
+		"reviewed_at": now,
+	}
+	if reason != "" {
+		fields["reject_reason"] = reason
+	}
+	res := mustContentDB().
+		Model(&content_db.Post{}).
+		Scopes(db.SchoolScope(schoolID)).
+		Where("id = ? AND status = ?", id, from).
+		Updates(fields)
 	if res.Error != nil {
 		return res.Error
 	}
