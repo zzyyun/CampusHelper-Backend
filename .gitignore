@@ -1,1 +1,8 @@
 .idea/
+
+# Harness agent runtime files
+.harness-active
+harness-progress.txt
+harness-tasks.json
+harness-tasks.json.bak
+harness-init.sh
