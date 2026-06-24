@@ -219,3 +219,86 @@ func HasLiked(schoolID, postID, userID int64) (bool, error) {
 	}
 	return n > 0, nil
 }
+
+// ─── Post Comment ───────────────────────────────────────────────────────────
+
+// CreateComment 创建评论并原子递增帖子评论计数。
+func CreateComment(comment *content_db.PostComment) error {
+	gdb := mustContentDB()
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(comment).Error; err != nil {
+			return err
+		}
+		// 原子递增评论计数
+		return tx.Model(&content_db.Post{}).
+			Where("id = ?", comment.PostID).
+			UpdateColumn("comment_count", gorm.Expr("comment_count + 1")).Error
+	})
+}
+
+// DeleteOwnedComment 软删除评论（仅作者本人，校验 school_id + user_id）。
+// 返回 true 表示删除了正常评论，false 表示已删除或不存在。
+func DeleteOwnedComment(schoolID, commentID, userID int64) (bool, error) {
+	gdb := mustContentDB()
+	var deleted bool
+	err := gdb.Transaction(func(tx *gorm.DB) error {
+		// 查找正常状态的评论（带 school 隔离）
+		var c content_db.PostComment
+		res := tx.Scopes(db.SchoolScope(schoolID)).
+			Where("id = ? AND user_id = ? AND status = 1", commentID, userID).
+			First(&c)
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			return ErrForbidden
+		}
+		if res.Error != nil {
+			return res.Error
+		}
+
+		// 软删除 + 标记 status=2（已删除）
+		if err := tx.Model(&c).Updates(map[string]interface{}{
+			"status": int8(2),
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&c).Error; err != nil {
+			return err
+		}
+
+		// 原子递减（最小为 0）
+		if err := tx.Model(&content_db.Post{}).
+			Where("id = ? AND comment_count > 0", c.PostID).
+			UpdateColumn("comment_count", gorm.Expr("comment_count - 1")).Error; err != nil {
+			return err
+		}
+		deleted = true
+		return nil
+	})
+	return deleted, err
+}
+
+// ListComments 游标分页查询帖子评论列表。
+func ListComments(schoolID, postID int64, cursor int64, pageSize int) ([]content_db.PostComment, int64, error) {
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 20
+	}
+	q := mustContentDB().
+		Model(&content_db.PostComment{}).
+		Scopes(db.SchoolScope(schoolID)).
+		Where("post_id = ? AND status = 1 AND parent_id = 0", postID) // 一级评论 + 正常状态
+
+	if cursor > 0 {
+		q = q.Where("id > ?", cursor)
+	}
+
+	var comments []content_db.PostComment
+	if err := q.Order("id ASC").Limit(pageSize + 1).Find(&comments).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var nextCursor int64
+	if len(comments) > pageSize {
+		nextCursor = comments[pageSize-1].ID
+		comments = comments[:pageSize]
+	}
+	return comments, nextCursor, nil
+}

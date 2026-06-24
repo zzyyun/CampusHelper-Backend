@@ -286,19 +286,112 @@ func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePos
 
 // ─── 评论 / 搜索 / 审核（Phase 1 占位） ────────────────────────────────────
 
-// CreateComment 创建评论（Phase 1 占位，后续 Issue 实现）
+// CreateComment 创建一级评论（含 DFA 敏感词扫描）。
+//
+// 流程：
+//  1. 校验参数（school_id/post_id/user_id > 0, content 1-500 字）
+//  2. DFA 敏感词扫描
+//  3. 生成雪花 ID，写入数据库（事务内原子递增 comment_count）
 func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.CreateCommentRequest) (*pb.CreateCommentResponse, error) {
-	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		return nil, fmt.Errorf("%w: 评论内容不能为空", errInvalidArgument)
+	}
+	// 按字符数限制（runes），500 字
+	runes := []rune(content)
+	if len(runes) > 500 {
+		return nil, fmt.Errorf("%w: 评论内容不能超过 500 字", errInvalidArgument)
+	}
+
+	// DFA 敏感词扫描
+	if hits := ScanSensitive(content); len(hits) > 0 {
+		return nil, &SensitiveWordErrorType{Hits: hits}
+	}
+
+	// 生成评论 ID
+	commentID, err := nextCommentID()
+	if err != nil {
+		return nil, fmt.Errorf("%w: 生成评论 ID 失败: %v", errInvalidArgument, err)
+	}
+
+	comment := &content_db.PostComment{
+		ID:       commentID,
+		SchoolID: req.SchoolId,
+		PostID:   req.PostId,
+		UserID:   req.UserId,
+		Content:  content,
+		ParentID: 0,  // Phase 1: 一级评论
+		Status:   1,  // 正常
+	}
+
+	if err := repo.CreateComment(comment); err != nil {
+		return nil, fmt.Errorf("create comment: %w", err)
+	}
+
+	return &pb.CreateCommentResponse{
+		CommentId: comment.ID,
+		CreatedAt: comment.CreatedAt.Unix(),
+	}, nil
 }
 
-// DeleteComment 删除评论（Phase 1 占位）
+// DeleteComment 删除评论（仅作者本人）。
+//
+// 流程：
+//  1. 校验参数
+//  2. 事务内：校验 ownership + 软删除 + 原子递减 comment_count
 func (s *ContentServiceServer) DeleteComment(ctx context.Context, req *pb.DeleteCommentRequest) (*pb.DeleteCommentResponse, error) {
-	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 || req.CommentId <= 0 || req.UserId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+
+	deleted, err := repo.DeleteOwnedComment(req.SchoolId, req.CommentId, req.UserId)
+	if err != nil {
+		if errors.Is(err, repo.ErrForbidden) {
+			return nil, fmt.Errorf("%w: 非作者本人或评论不存在", errForbidden)
+		}
+		return nil, err
+	}
+
+	return &pb.DeleteCommentResponse{Success: deleted}, nil
 }
 
-// ListComments 评论列表（Phase 1 占位）
+// ListComments 评论列表（游标分页，正序）。
+//
+// 分页策略：游标为上一页最后一条评论的 ID。
 func (s *ContentServiceServer) ListComments(ctx context.Context, req *pb.ListCommentsRequest) (*pb.ListCommentsResponse, error) {
-	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 || req.PostId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+
+	pageSize := 20
+	var cursor int64
+	if req.Pagination != nil {
+		pageSize = int(req.Pagination.GetPageSize())
+		if pageSize <= 0 {
+			pageSize = 20
+		}
+		cursor = parseCursor(req.Pagination.GetCursor())
+	}
+
+	comments, nextCursor, err := repo.ListComments(req.SchoolId, req.PostId, cursor, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &pb.ListCommentsResponse{
+		Comments: make([]*pb.Comment, 0, len(comments)),
+		HasMore:  nextCursor > 0,
+	}
+	if nextCursor > 0 {
+		resp.NextCursor = fmt.Sprintf("%d", nextCursor)
+	}
+	for i := range comments {
+		resp.Comments = append(resp.Comments, toPbComment(&comments[i]))
+	}
+	return resp, nil
 }
 
 // esClient 全局 ES 客户端，由 InitES 初始化。
@@ -572,6 +665,23 @@ func toPbPost(p *content_db.Post) *pb.Post {
 		}
 	}
 	return out
+}
+
+// toPbComment 把 DB 评论模型转换为 protobuf 消息
+func toPbComment(c *content_db.PostComment) *pb.Comment {
+	if c == nil {
+		return nil
+	}
+	return &pb.Comment{
+		Id:        c.ID,
+		SchoolId:  c.SchoolID,
+		PostId:    c.PostID,
+		UserId:    c.UserID,
+		Content:   c.Content,
+		ParentId:  c.ParentID,
+		Status:    pb.CommentStatus(c.Status),
+		CreatedAt: c.CreatedAt.Unix(),
+	}
 }
 
 // parseCursor 解析游标字符串（目前是十进制 ID）
