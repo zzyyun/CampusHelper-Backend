@@ -234,7 +234,7 @@ func (s *ContentServiceServer) ListPosts(ctx context.Context, req *pb.ListPostsR
 
 // ─── 点赞 ───────────────────────────────────────────────────────────────────
 
-// LikePost 点赞帖子
+// LikePost 点赞帖子（含 MQ 事件通知帖子作者）。
 func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostRequest) (*pb.LikePostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
@@ -246,9 +246,14 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 	}
 	if added {
 		repo.IncLikesCount(req.PostId)
+		// 首次点赞 → 发布 MQ 事件通知帖子作者
+		post, _ := repo.GetByID(req.SchoolId, req.PostId)
+		if post != nil && post.UserID != req.UserId {
+			publishEvent(ctx, "content.liked", req.PostId, req.SchoolId, req.UserId)
+		}
 	}
 
-	// 查询最新点赞数 + 真实 like 状态（避免"已点赞"被误报为 false）
+	// 查询最新点赞数 + 真实 like 状态
 	post, err := repo.GetByID(req.SchoolId, req.PostId)
 	if err != nil {
 		return nil, err
@@ -260,7 +265,7 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 	return &pb.LikePostResponse{Liked: liked, LikesCount: post.LikesCount}, nil
 }
 
-// UnlikePost 取消点赞
+// UnlikePost 取消点赞。
 func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePostRequest) (*pb.UnlikePostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
