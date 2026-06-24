@@ -87,6 +87,11 @@ type Post struct {
 	SHTradeMethod int8    `gorm:"column:sh_trade_method;default:0" json:"sh_trade_method"` // 交易方式 1=面交 2=快递
 	SHCategory    int8    `gorm:"column:sh_category;default:0"   json:"sh_category"`
 
+	// ─── 审核相关字段 ───────────────────────────────────────────────────────────
+	RejectReason string     `gorm:"column:reject_reason;size:500"     json:"reject_reason"`  // 审核拒绝/下架原因
+	ReviewerID   int64      `gorm:"column:reviewer_id;default:0"      json:"reviewer_id"`    // 审核员 ID
+	ReviewedAt   *time.Time `gorm:"column:reviewed_at"                json:"reviewed_at,omitempty"` // 审核时间
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

@@ -5,19 +5,34 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	content_db "go_projects/praProject1/cmd/content/model"
 	"go_projects/praProject1/cmd/content/repo"
 	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
 	"go_projects/praProject1/pkg/contextx"
+	es_pkg "go_projects/praProject1/pkg/es"
+	"go_projects/praProject1/pkg/mq"
 )
 
 // ContentServiceServer 实现 gRPC ContentService 接口
 // 遵循 docs/content-service-prd.md §5.1
 type ContentServiceServer struct {
 	pb.UnimplementedContentServiceServer
+}
+
+// mqPublisher 全局消息发布者，由 main.go 中的 InitMQ 初始化。
+// 若未初始化（nil），审核操作仅记录日志不发布消息。
+var mqPublisher *mq.Publisher
+
+// InitMQ 初始化 RabbitMQ 发布者。
+// addr 格式: amqp://user:pass@host:port/
+func InitMQ(addr string) {
+	mqPublisher = mq.NewPublisher(addr, "content.events")
+	log.Printf("[content-service] MQ Publisher 已初始化（队列: content.events）")
 }
 
 // ─── 帖子 CRUD ──────────────────────────────────────────────────────────────
@@ -271,63 +286,336 @@ func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePos
 
 // ─── 评论 / 搜索 / 审核（Phase 1 占位） ────────────────────────────────────
 
-// CreateComment 创建评论（Phase 1 占位，后续 Issue 实现）
+// CreateComment 创建一级评论（含 DFA 敏感词扫描）。
+//
+// 流程：
+//  1. 校验参数（school_id/post_id/user_id > 0, content 1-500 字）
+//  2. DFA 敏感词扫描
+//  3. 生成雪花 ID，写入数据库（事务内原子递增 comment_count）
 func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.CreateCommentRequest) (*pb.CreateCommentResponse, error) {
-	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		return nil, fmt.Errorf("%w: 评论内容不能为空", errInvalidArgument)
+	}
+	// 按字符数限制（runes），500 字
+	runes := []rune(content)
+	if len(runes) > 500 {
+		return nil, fmt.Errorf("%w: 评论内容不能超过 500 字", errInvalidArgument)
+	}
+
+	// DFA 敏感词扫描
+	if hits := ScanSensitive(content); len(hits) > 0 {
+		return nil, &SensitiveWordErrorType{Hits: hits}
+	}
+
+	// 生成评论 ID
+	commentID, err := nextCommentID()
+	if err != nil {
+		return nil, fmt.Errorf("%w: 生成评论 ID 失败: %v", errInvalidArgument, err)
+	}
+
+	comment := &content_db.PostComment{
+		ID:       commentID,
+		SchoolID: req.SchoolId,
+		PostID:   req.PostId,
+		UserID:   req.UserId,
+		Content:  content,
+		ParentID: 0,  // Phase 1: 一级评论
+		Status:   1,  // 正常
+	}
+
+	if err := repo.CreateComment(comment); err != nil {
+		return nil, fmt.Errorf("create comment: %w", err)
+	}
+
+	return &pb.CreateCommentResponse{
+		CommentId: comment.ID,
+		CreatedAt: comment.CreatedAt.Unix(),
+	}, nil
 }
 
-// DeleteComment 删除评论（Phase 1 占位）
+// DeleteComment 删除评论（仅作者本人）。
+//
+// 流程：
+//  1. 校验参数
+//  2. 事务内：校验 ownership + 软删除 + 原子递减 comment_count
 func (s *ContentServiceServer) DeleteComment(ctx context.Context, req *pb.DeleteCommentRequest) (*pb.DeleteCommentResponse, error) {
-	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 || req.CommentId <= 0 || req.UserId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+
+	deleted, err := repo.DeleteOwnedComment(req.SchoolId, req.CommentId, req.UserId)
+	if err != nil {
+		if errors.Is(err, repo.ErrForbidden) {
+			return nil, fmt.Errorf("%w: 非作者本人或评论不存在", errForbidden)
+		}
+		return nil, err
+	}
+
+	return &pb.DeleteCommentResponse{Success: deleted}, nil
 }
 
-// ListComments 评论列表（Phase 1 占位）
+// ListComments 评论列表（游标分页，正序）。
+//
+// 分页策略：游标为上一页最后一条评论的 ID。
 func (s *ContentServiceServer) ListComments(ctx context.Context, req *pb.ListCommentsRequest) (*pb.ListCommentsResponse, error) {
-	return nil, fmt.Errorf("%w: 评论功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 || req.PostId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+
+	pageSize := 20
+	var cursor int64
+	if req.Pagination != nil {
+		pageSize = int(req.Pagination.GetPageSize())
+		if pageSize <= 0 {
+			pageSize = 20
+		}
+		cursor = parseCursor(req.Pagination.GetCursor())
+	}
+
+	comments, nextCursor, err := repo.ListComments(req.SchoolId, req.PostId, cursor, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &pb.ListCommentsResponse{
+		Comments: make([]*pb.Comment, 0, len(comments)),
+		HasMore:  nextCursor > 0,
+	}
+	if nextCursor > 0 {
+		resp.NextCursor = fmt.Sprintf("%d", nextCursor)
+	}
+	for i := range comments {
+		resp.Comments = append(resp.Comments, toPbComment(&comments[i]))
+	}
+	return resp, nil
 }
 
-// SearchContent 搜索内容（Phase 1 占位，ES 接入待实现）
+// esClient 全局 ES 客户端，由 InitES 初始化。
+var esClient *es_pkg.Client
+
+// InitES 初始化 Elasticsearch 客户端。
+func InitES(addrs []string) {
+	var err error
+	esClient, err = es_pkg.NewClient(addrs, "campus_posts")
+	if err != nil {
+		log.Printf("[content-service] ES 初始化失败（搜索功能降级）: %v", err)
+		return
+	}
+	log.Printf("[content-service] ES 客户端已初始化（索引: campus_posts）")
+}
+
+// SearchContent 搜索内容（ES 关键词搜索 + 分类筛选）。
+//
+// 搜索维度：
+//   - keyword：同时匹配 title 和 content 字段
+//   - type：帖子分类筛选（可选）
+//   - category：物品分类筛选（可选）
+//   - status：状态筛选（可选，默认已发布）
+//   - page/page_size：分页
+//   - sort：排序方式（默认按创建时间倒序）
 func (s *ContentServiceServer) SearchContent(ctx context.Context, req *pb.SearchContentRequest) (*pb.SearchContentResponse, error) {
-	return nil, fmt.Errorf("%w: 搜索功能待实现", errUnimplemented)
+	if req.SchoolId <= 0 {
+		return nil, fmt.Errorf("%w: school_id 必须为正数", errInvalidArgument)
+	}
+	if esClient == nil {
+		return nil, fmt.Errorf("搜索服务暂不可用（ES 未连接）")
+	}
+	if strings.TrimSpace(req.Keyword) == "" {
+		return nil, fmt.Errorf("%w: 搜索关键词不能为空", errInvalidArgument)
+	}
+
+	// 默认值处理
+	page := int(req.Page)
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 20
+	}
+	from := (page - 1) * pageSize
+
+	// 构建 ES 搜索查询
+	queryJSON := buildSearchQuery(req.SchoolId, req.Keyword, req.Type, req.Category, req.Status, from, pageSize, req.Sort)
+	result, err := esClient.Search(ctx, queryJSON)
+	if err != nil {
+		return nil, fmt.Errorf("搜索失败: %w", err)
+	}
+
+	// 映射搜索结果
+	posts := make([]*pb.Post, 0, len(result.Hits.Hits))
+	for _, hit := range result.Hits.Hits {
+		doc := &content_db.Post{
+			ID:           hit.Source.PostID,
+			SchoolID:     hit.Source.SchoolID,
+			UserID:       hit.Source.UserID,
+			Type:         hit.Source.Type,
+			Title:        hit.Source.Title,
+			Content:      hit.Source.Content,
+			Status:       content_db.PostStatus(hit.Source.Status),
+			LikesCount:   hit.Source.LikesCount,
+			CommentCount: hit.Source.CommentCount,
+		}
+		posts = append(posts, toPbPost(doc))
+	}
+
+	return &pb.SearchContentResponse{
+		Posts:    posts,
+		Total:    result.Hits.Total.Value,
+		Page:     int32(page),
+		PageSize: int32(pageSize),
+	}, nil
 }
 
-// ApprovePost 审核通过（pending → published，Phase 1 占位）
+// ApprovePost 审核通过（pending → published，发布 MQ 事件触发 ES 同步）。
+//
+// 流程：
+//  1. 校验参数（school_id > 0, post_id > 0）
+//  2. 先查询帖子获取 user_id（用于 MQ 事件），再状态机校验（仅 pending 可审核通过）
+//  3. 原子更新：status=published + reviewer_id + reviewed_at
+//  4. 发送 MQ content.published 事件（best-effort，失败不阻塞审核）
 func (s *ContentServiceServer) ApprovePost(ctx context.Context, req *pb.ApprovePostRequest) (*pb.ApprovePostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
 	}
-	if err := repo.UpdateStatus(req.SchoolId, req.PostId,
-		content_db.PostStatusPending, content_db.PostStatusPublished); err != nil {
+
+	// 先查询帖子（用于校验状态 + 获取 user_id 构造 MQ 事件）
+	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 帖子不存在", errNotFound)
+		}
+		return nil, err
+	}
+
+	// 状态机校验
+	if post.Status != content_db.PostStatusPending {
+		return nil, fmt.Errorf("%w: 只有待审核（pending）状态可以审核通过，当前状态 %d", errInvalidArgument, post.Status)
+	}
+
+	// 原子更新状态 + 审核信息
+	if err := repo.UpdateReview(req.SchoolId, req.PostId,
+		content_db.PostStatusPending, content_db.PostStatusPublished,
+		req.ReviewerId, ""); err != nil {
 		return nil, fmt.Errorf("approve: %w", err)
 	}
+
+	// 发送 MQ 事件（best-effort，失败不阻塞审核结果）
+	publishEvent(ctx, mq.EventContentPublished, post.ID, post.SchoolID, post.UserID)
+
 	return &pb.ApprovePostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_PUBLISHED}, nil
 }
 
-// RejectPost 审核拒绝（pending → rejected，Phase 1 占位）
+// RejectPost 审核拒绝（pending → rejected，需填拒绝原因，发布 MQ 事件通知用户）。
+//
+// 流程：
+//  1. 校验参数 + 拒绝原因非空
+//  2. 状态机校验（仅 pending 可审核拒绝）
+//  3. 原子更新：status=rejected + reviewer_id + reviewed_at + reject_reason
+//  4. 发送 MQ content.review_result 事件（通知用户审核未通过）
 func (s *ContentServiceServer) RejectPost(ctx context.Context, req *pb.RejectPostRequest) (*pb.RejectPostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
 	}
-	if strings.TrimSpace(req.Reason) == "" {
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
 		return nil, fmt.Errorf("%w: 拒绝原因必填", errInvalidArgument)
 	}
-	if err := repo.UpdateStatus(req.SchoolId, req.PostId,
-		content_db.PostStatusPending, content_db.PostStatusRejected); err != nil {
+
+	// 先查询帖子（校验状态 + 获取 user_id）
+	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 帖子不存在", errNotFound)
+		}
+		return nil, err
+	}
+
+	if post.Status != content_db.PostStatusPending {
+		return nil, fmt.Errorf("%w: 只有待审核（pending）状态可以审核拒绝，当前状态 %d", errInvalidArgument, post.Status)
+	}
+
+	// 原子更新状态 + 审核信息
+	if err := repo.UpdateReview(req.SchoolId, req.PostId,
+		content_db.PostStatusPending, content_db.PostStatusRejected,
+		req.ReviewerId, reason); err != nil {
 		return nil, fmt.Errorf("reject: %w", err)
 	}
+
+	// 发送 MQ 事件（通知用户）
+	event := mq.NewContentEvent(mq.EventContentRejected, post.ID, post.SchoolID, post.UserID,
+		traceIDFromContext(ctx))
+	event.Data["result"] = "rejected"
+	event.Data["reason"] = reason
+	publishEventRaw(event)
+
 	return &pb.RejectPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_REJECTED}, nil
 }
 
-// TakedownPost 违规下架（published → closed，Phase 1 占位）
+// TakedownPost 违规下架（published → closed，发布 MQ 事件通知 ES 删除文档）。
+//
+// 流程：
+//  1. 校验参数
+//  2. 状态机校验（仅 published 可下架）
+//  3. 原子更新：status=closed + reviewer_id + reviewed_at + reject_reason
+//  4. 发送 MQ content.taken_down 事件
 func (s *ContentServiceServer) TakedownPost(ctx context.Context, req *pb.TakedownPostRequest) (*pb.TakedownPostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
 	}
-	if err := repo.UpdateStatus(req.SchoolId, req.PostId,
-		content_db.PostStatusPublished, content_db.PostStatusClosed); err != nil {
+
+	// 先查询帖子
+	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 帖子不存在", errNotFound)
+		}
+		return nil, err
+	}
+
+	if post.Status != content_db.PostStatusPublished {
+		return nil, fmt.Errorf("%w: 只有已发布（published）状态可以下架，当前状态 %d", errInvalidArgument, post.Status)
+	}
+
+	// 原子更新状态 + 审核信息（下架原因存入 reject_reason）
+	if err := repo.UpdateReview(req.SchoolId, req.PostId,
+		content_db.PostStatusPublished, content_db.PostStatusClosed,
+		req.ReviewerId, req.Reason); err != nil {
 		return nil, fmt.Errorf("takedown: %w", err)
 	}
-	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil
+
+	// 发送 MQ 事件
+	event := mq.NewContentEvent(mq.EventContentTakenDown, post.ID, post.SchoolID, post.UserID,
+		traceIDFromContext(ctx))
+	if req.Reason != "" {
+		event.Data["reason"] = req.Reason
+	}
+	publishEventRaw(event)
+
+	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil}
+
+// ─── MQ 辅助函数 ─────────────────────────────────────────────────────────────
+
+// publishEvent 发布简单的 MQ 内容事件。
+func publishEvent(ctx context.Context, eventType string, postID, schoolID, userID int64) {
+	event := mq.NewContentEvent(eventType, postID, schoolID, userID, traceIDFromContext(ctx))
+	publishEventRaw(event)
+}
+
+// publishEventRaw 发布事件（best-effort，失败仅记录日志）。
+func publishEventRaw(event *mq.ContentEvent) {
+	if mqPublisher == nil {
+		log.Printf("[content-service] MQ 未初始化，跳过事件发布: type=%s post=%d", event.Type, event.PostID)
+		return
+	}
+	// 使用独立的 context（不依赖 gRPC ctx 生命周期）
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = mqPublisher.Publish(ctx, event) // Publish 内部已有降级日志
 }
 
 // ─── 辅助函数 ───────────────────────────────────────────────────────────────
@@ -379,6 +667,23 @@ func toPbPost(p *content_db.Post) *pb.Post {
 	return out
 }
 
+// toPbComment 把 DB 评论模型转换为 protobuf 消息
+func toPbComment(c *content_db.PostComment) *pb.Comment {
+	if c == nil {
+		return nil
+	}
+	return &pb.Comment{
+		Id:        c.ID,
+		SchoolId:  c.SchoolID,
+		PostId:    c.PostID,
+		UserId:    c.UserID,
+		Content:   c.Content,
+		ParentId:  c.ParentID,
+		Status:    pb.CommentStatus(c.Status),
+		CreatedAt: c.CreatedAt.Unix(),
+	}
+}
+
 // parseCursor 解析游标字符串（目前是十进制 ID）
 func parseCursor(s string) int64 {
 	if s == "" {
@@ -391,10 +696,55 @@ func parseCursor(s string) int64 {
 
 // traceIDFromContext 提取 trace_id（trace 透传在 pkg/middleware 层统一处理）
 func traceIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
 	if v, ok := ctx.Value(contextx.TraceIDKey{}).(string); ok {
 		return v
 	}
 	return ""
+}
+
+// buildSearchQuery 构建 ES 搜索查询 JSON。
+// 查询维度：school_id（必须）+ keyword（必须） + type/category/status（可选）。
+func buildSearchQuery(schoolID int64, keyword string, postType pb.PostType, category pb.ItemCategory,
+	status pb.PostStatus, from, size int, sort common_pb.SortType) string {
+
+	// 构建 filter 子句（可叠加）
+	var filters []string
+	filters = append(filters, fmt.Sprintf(`{"term":{"school_id":%d}}`, schoolID))
+
+	if postType != pb.PostType_POST_TYPE_UNSPECIFIED {
+		filters = append(filters, fmt.Sprintf(`{"term":{"type":%d}}`, postType))
+	}
+
+	if category != pb.ItemCategory_ITEM_CATEGORY_UNSPECIFIED {
+		// 分类同时匹配失物招领和二手交易的分类字段
+		filters = append(filters,
+			fmt.Sprintf(`{"bool":{"should":[{"term":{"lf_category":%d}},{"term":{"sh_category":%d}}]}}`, category, category))
+	}
+
+	if status != pb.PostStatus_POST_STATUS_UNSPECIFIED {
+		filters = append(filters, fmt.Sprintf(`{"term":{"status":%d}}`, status))
+	}
+
+	// 构建排序
+	var sortClause string
+	switch sort {
+	case common_pb.SortType_SORT_TYPE_TIME_DESC, common_pb.SortType_SORT_TYPE_UNSPECIFIED:
+		sortClause = `[{"created_at":{"order":"desc"}}]`
+	case common_pb.SortType_SORT_TYPE_LIKES_DESC:
+		sortClause = `[{"likes_count":{"order":"desc"}}]`
+	case common_pb.SortType_SORT_TYPE_RELEVANCE:
+		sortClause = `[{"_score":{"order":"desc"}}]`
+	default:
+		sortClause = `[{"created_at":{"order":"desc"}}]`
+	}
+
+	return fmt.Sprintf(
+		`{"from":%d,"size":%d,"query":{"bool":{"must":[{"multi_match":{"query":%q,"fields":["title","content"],"type":"best_fields"}}],"filter":[%s]}},"sort":%s}`,
+		from, size, keyword, strings.Join(filters, ","), sortClause,
+	)
 }
 
 // ─── 错误常量（Phase 1 简化处理，Phase 2 接入 pkg/errcode） ────────────────
