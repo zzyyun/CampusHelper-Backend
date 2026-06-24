@@ -39,6 +39,11 @@ func main() {
 	}
 	fmt.Println("[gateway] user-service client connected")
 
+	if err = client.InitContentClient(); err != nil {
+		log.Fatalf("content client init: %v", err)
+	}
+	fmt.Println("[gateway] content-service client connected")
+
 	// ── HTTP Server ───────────────────────────────────────────────────────────
 	addr := config.Conf.Gateway.Address
 	srv := &http.Server{
