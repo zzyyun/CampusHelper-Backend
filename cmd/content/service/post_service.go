@@ -304,12 +304,15 @@ func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePos
 
 // ─── 评论 / 搜索 / 审核（Phase 1 占位） ────────────────────────────────────
 
-// CreateComment 创建一级评论（含 DFA 敏感词扫描）。
+// CreateComment 创建评论（支持二级回复，含 DFA 敏感词扫描）。
 //
 // 流程：
 //  1. 校验参数（school_id/post_id/user_id > 0, content 1-500 字）
-//  2. DFA 敏感词扫描
-//  3. 生成雪花 ID，写入数据库（事务内原子递增 comment_count）
+//  2. parent_id 业务校验（如有）：
+//     - 父评论必须存在、未被删除、属于同一 school_id、必须是一级评论
+//     - 父评论的 post_id 必须与 req.PostId 一致
+//  3. DFA 敏感词扫描
+//  4. 生成雪花 ID，写入数据库（事务内原子递增 comment_count）
 func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.CreateCommentRequest) (*pb.CreateCommentResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 || req.UserId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
@@ -322,6 +325,26 @@ func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.Create
 	runes := []rune(content)
 	if len(runes) > 500 {
 		return nil, fmt.Errorf("%w: 评论内容不能超过 500 字", errInvalidArgument)
+	}
+
+	// parent_id 业务校验（二级回复）
+	if req.ParentId != 0 {
+		parent, err := repo.GetCommentByID(req.SchoolId, req.ParentId)
+		if err != nil {
+			if errors.Is(err, repo.ErrNotFound) {
+				return nil, fmt.Errorf("%w: 父评论 %d 不存在", errNotFound, req.ParentId)
+			}
+			return nil, fmt.Errorf("查询父评论: %w", err)
+		}
+		if parent.Status != 1 {
+			return nil, fmt.Errorf("%w: 父评论已被删除，无法回复", errInvalidArgument)
+		}
+		if parent.ParentID != 0 {
+			return nil, fmt.Errorf("%w: 仅支持二级回复，不允许嵌套", errInvalidArgument)
+		}
+		if parent.PostID != req.PostId {
+			return nil, fmt.Errorf("%w: 父评论所属帖子与请求不匹配", errInvalidArgument)
+		}
 	}
 
 	// DFA 敏感词扫描
@@ -341,8 +364,8 @@ func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.Create
 		PostID:   req.PostId,
 		UserID:   req.UserId,
 		Content:  content,
-		ParentID: 0,  // Phase 1: 一级评论
-		Status:   1,  // 正常
+		ParentID: req.ParentId, // 0=一级评论，>0=二级回复
+		Status:   1,            // 正常
 	}
 
 	if err := repo.CreateComment(comment); err != nil {
@@ -360,9 +383,19 @@ func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.Create
 // 流程：
 //  1. 校验参数
 //  2. 事务内：校验 ownership + 软删除 + 原子递减 comment_count
+//  3. 如删除的是一级评论，级联软删除其下所有回复，并累加 comment_count 递减
 func (s *ContentServiceServer) DeleteComment(ctx context.Context, req *pb.DeleteCommentRequest) (*pb.DeleteCommentResponse, error) {
 	if req.SchoolId <= 0 || req.CommentId <= 0 || req.UserId <= 0 {
 		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+
+	// 先查询评论，确认是否为一级评论（用于级联）
+	comment, err := repo.GetCommentByID(req.SchoolId, req.CommentId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 评论不存在", errNotFound)
+		}
+		return nil, err
 	}
 
 	deleted, err := repo.DeleteOwnedComment(req.SchoolId, req.CommentId, req.UserId)
@@ -371,6 +404,21 @@ func (s *ContentServiceServer) DeleteComment(ctx context.Context, req *pb.Delete
 			return nil, fmt.Errorf("%w: 非作者本人或评论不存在", errForbidden)
 		}
 		return nil, err
+	}
+
+	// 如果是一级评论（parent_id=0），级联软删除其下所有回复
+	if deleted && comment.ParentID == 0 {
+		repliesCount, err := repo.CascadeSoftDeleteReplies(req.SchoolId, req.CommentId)
+		if err != nil {
+			log.Printf("[content-service] WARN: 级联删除回复失败 parent=%d: %v", req.CommentId, err)
+			// 不阻塞主流程（已删除的评论不再可见）
+		} else if repliesCount > 0 {
+			// 累加递减帖子 comment_count（一级评论已 -1，再 -repliesCount）
+			if err := repo.DecCommentCountBy(comment.PostID, int32(1+repliesCount)); err != nil {
+				log.Printf("[content-service] WARN: 累加递减 comment_count 失败 post=%d: %v", comment.PostID, err)
+			}
+			log.Printf("[content-service] 级联删除一级评论 %d 下的 %d 条回复", req.CommentId, repliesCount)
+		}
 	}
 
 	return &pb.DeleteCommentResponse{Success: deleted}, nil
@@ -408,6 +456,57 @@ func (s *ContentServiceServer) ListComments(ctx context.Context, req *pb.ListCom
 	}
 	for i := range comments {
 		resp.Comments = append(resp.Comments, toPbComment(&comments[i]))
+	}
+	return resp, nil
+}
+
+// ListCommentReplies 查询某条一级评论下的所有二级回复（游标分页）。
+//
+// 流程：
+//  1. 校验参数（school_id/parent_comment_id > 0）
+//  2. 验证父评论存在、属于同一 school_id、必须是一级评论
+//  3. 游标分页查询所有 parent_id=parent_comment_id 且 status=1 的回复
+func (s *ContentServiceServer) ListCommentReplies(ctx context.Context, req *pb.ListCommentRepliesRequest) (*pb.ListCommentRepliesResponse, error) {
+	if req.SchoolId <= 0 || req.ParentCommentId <= 0 {
+		return nil, fmt.Errorf("%w: 参数不合法", errInvalidArgument)
+	}
+
+	// 验证父评论存在并属于一级评论
+	parent, err := repo.GetCommentByID(req.SchoolId, req.ParentCommentId)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, fmt.Errorf("%w: 父评论不存在", errNotFound)
+		}
+		return nil, err
+	}
+	if parent.ParentID != 0 {
+		return nil, fmt.Errorf("%w: 父评论必须是顶级评论", errInvalidArgument)
+	}
+
+	pageSize := 20
+	var cursor int64
+	if req.Pagination != nil {
+		pageSize = int(req.Pagination.GetPageSize())
+		if pageSize <= 0 {
+			pageSize = 20
+		}
+		cursor = parseCursor(req.Pagination.GetCursor())
+	}
+
+	replies, nextCursor, err := repo.ListRepliesByParent(req.SchoolId, req.ParentCommentId, cursor, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &pb.ListCommentRepliesResponse{
+		Replies: make([]*pb.Comment, 0, len(replies)),
+		HasMore: nextCursor > 0,
+	}
+	if nextCursor > 0 {
+		resp.NextCursor = encodeCursor(nextCursor)
+	}
+	for i := range replies {
+		resp.Replies = append(resp.Replies, toPbComment(&replies[i]))
 	}
 	return resp, nil
 }
