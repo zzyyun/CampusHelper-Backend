@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package pb;
+option go_package = "/message_pb";
+
+import "PB/common.proto";
+
+// =====================================================
+// MessageService 消息通知服务接口定义
+// 对应 docs/message-service-prd.md v1.0
+// =====================================================
+service MessageService {
+  // 获取通知列表（游标分页，支持按类型筛选）
+  rpc ListNotifications (ListNotificationsRequest) returns (ListNotificationsResponse);
+  // 获取未读通知数
+  rpc UnreadCount (UnreadCountRequest) returns (UnreadCountResponse);
+  // 标记单条通知为已读
+  rpc MarkRead (MarkReadRequest) returns (pb.BaseResponse);
+  // 标记全部通知为已读
+  rpc MarkAllRead (MarkAllReadRequest) returns (pb.BaseResponse);
+  // 删除单条通知
+  rpc DeleteNotification (DeleteNotificationRequest) returns (pb.BaseResponse);
+}
+
+// ─── 消息体 ─────────────────────────────────────────────────────────────────
+
+message Notification {
+  int64 id = 1;
+  string type = 2;        // liked / published / review_result / taken_down / replied
+  string title = 3;       // 通知标题（含快照）
+  string content = 4;     // 通知正文/预览
+  int64 from_user_id = 5; // 触发者 user_id（可选）
+  string ref_type = 6;    // 关联类型：post / comment
+  int64 ref_id = 7;       // 关联 ID
+  bool is_read = 8;       // 是否已读
+  int64 created_at = 9;   // 创建时间（Unix 时间戳）
+}
+
+// ─── ListNotifications ──────────────────────────────────────────────────────
+
+message ListNotificationsRequest {
+  int64 school_id = 1;
+  int64 user_id = 2;
+  string cursor = 3;       // 游标（Base64 编码）
+  int32 page_size = 4;     // 每页数量，上限 50
+  string type = 5;         // 按类型筛选（可选）
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  int64 unread_count = 2;
+  bool has_more = 3;
+  string next_cursor = 4;
+}
+
+// ─── UnreadCount ────────────────────────────────────────────────────────────
+
+message UnreadCountRequest {
+  int64 school_id = 1;
+  int64 user_id = 2;
+}
+
+message UnreadCountResponse {
+  int64 count = 1;
+}
+
+// ─── MarkRead ───────────────────────────────────────────────────────────────
+
+message MarkReadRequest {
+  int64 id = 1;       // 通知 ID
+  int64 user_id = 2;
+}
+
+// ─── MarkAllRead ────────────────────────────────────────────────────────────
+
+message MarkAllReadRequest {
+  int64 school_id = 1;
+  int64 user_id = 2;
+}
+
+// ─── DeleteNotification ─────────────────────────────────────────────────────
+
+message DeleteNotificationRequest {
+  int64 id = 1;       // 通知 ID
+  int64 user_id = 2;
+}
+
+// protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/message.proto
