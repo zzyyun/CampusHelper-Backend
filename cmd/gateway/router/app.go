@@ -28,7 +28,14 @@ func NewRouter() *gin.Engine {
 	// ── API v1 ─────────────────────────────────────────────────────────────
 	v1 := r.Group("/api/v1")
 
-	// User Service – public routes
+	
+		// User Service – schools route
+		schools := v1.Group("/schools", middleware.JWTAuth())
+		{
+			schools.GET("", handler.ListSchools)
+		}
+
+// User Service – public routes
 	userPublic := v1.Group("/user")
 	{
 		userPublic.POST("/login", handler.WxLogin)   // WeChat login → 双 Token
