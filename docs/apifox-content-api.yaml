@@ -1,0 +1,857 @@
+openapi: 3.0.3
+info:
+  title: CampusHelper - 内容服务 API
+  description: |
+    校园互助平台内容服务 HTTP 接口文档（经 Gateway 代理）。
+
+    **Base URL**: `http://localhost:8082`
+    **鉴权方式**: 所有接口均需 `Authorization: Bearer <access_token>`（通过 `/api/v1/user/login` 获取）
+    **链路追踪**: 请求头 `X-Trace-ID`（可选）→ 响应头 `X-Trace-ID`
+
+    **统一错误响应格式**:
+    ```json
+    { "code": 20006, "message": "未绑定学校，无法访问该接口", "trace_id": "abc123..." }
+    ```
+
+    **错误码分段**: `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
+  version: 1.0.0
+  contact:
+    name: CampusHelper Team
+
+servers:
+  - url: http://localhost:8082
+    description: 本地开发环境
+
+tags:
+  - name: 帖子
+    description: 帖子的创建 / 列表 / 详情 / 编辑 / 删除
+  - name: 评论
+    description: 评论的创建 / 列表 / 删除
+  - name: 点赞
+    description: 帖子点赞 / 取消点赞
+  - name: 搜索
+    description: 关键词搜索（ES）
+
+components:
+  securitySchemes:
+    BearerToken:
+      type: http
+      scheme: bearer
+      description: Access Token（JWT），通过 POST /api/v1/user/login 获取，默认 24 小时有效
+
+  parameters:
+    XTraceID:
+      name: X-Trace-ID
+      in: header
+      required: false
+      description: 自定义追踪 ID（32 字符 hex），缺失时自动生成
+      schema:
+        type: string
+        example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    PostID:
+      name: id
+      in: path
+      required: true
+      description: 帖子 ID
+      schema:
+        type: integer
+        format: int64
+        example: 1893046982369177600
+
+    CommentID:
+      name: id
+      in: path
+      required: true
+      description: 评论 ID
+      schema:
+        type: integer
+        format: int64
+        example: 1893046982369177601
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: integer
+          description: 业务错误码（0=成功）
+          example: 20006
+        message:
+          type: string
+          description: 错误描述
+          example: "未绑定学校，无法访问该接口"
+        trace_id:
+          type: string
+          description: 链路追踪 ID
+          example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    LostFoundExtra:
+      type: object
+      description: 失物招领扩展字段（type=2 时填写）
+      properties:
+        location:
+          type: string
+          description: 丢失/拾取地点
+          example: "图书馆三楼阅览室"
+        category:
+          type: integer
+          description: "物品分类 (1=数码 2=证件 3=钥匙 4=书籍 5=服装 6=充电器 7=生活用品 8=其他)"
+          enum: [1, 2, 3, 4, 5, 6, 7, 8]
+          example: 4
+        contact:
+          type: string
+          description: 联系方式
+          example: "微信: zhangsan2026"
+        lost_or_found:
+          type: integer
+          description: "1=我丢失了 2=我拾到了"
+          enum: [1, 2]
+          example: 1
+
+    SecondHandExtra:
+      type: object
+      description: 二手交易扩展字段（type=3 时填写）
+      properties:
+        price:
+          type: number
+          format: double
+          description: 期望售价（元）
+          example: 15.0
+        original_price:
+          type: number
+          format: double
+          description: 原价（元）
+          example: 49.8
+        condition:
+          type: integer
+          description: "成色 (1=全新 2=几乎全新 3=良好 4=一般)"
+          enum: [1, 2, 3, 4]
+          example: 2
+        trade_method:
+          type: integer
+          description: "交易方式 (1=面交 2=快递)"
+          enum: [1, 2]
+          example: 1
+        category:
+          type: integer
+          description: "物品分类 (1=数码 2=证件 3=钥匙 4=书籍 5=服装 6=充电器 7=生活用品 8=其他)"
+          enum: [1, 2, 3, 4, 5, 6, 7, 8]
+          example: 4
+
+    Post:
+      type: object
+      description: 帖子对象
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1893046982369177600
+        school_id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          example: 100001
+        type:
+          type: integer
+          description: "1=通用 2=失物招领 3=二手交易"
+          enum: [1, 2, 3]
+          example: 1
+        title:
+          type: string
+          example: "求拼车去高铁站"
+        content:
+          type: string
+          example: "本周六下午想去杭州东站，有一起拼车的同学吗？"
+        images:
+          type: array
+          items:
+            type: string
+          description: 图片 CDN URL 列表
+        status:
+          type: integer
+          description: "1=审核中 2=已发布 3=已过期 4=已关闭 5=已拒绝 6=已认领 7=已售出"
+          enum: [1, 2, 3, 4, 5, 6, 7]
+          example: 2
+        likes_count:
+          type: integer
+          example: 15
+        comment_count:
+          type: integer
+          example: 3
+        created_at:
+          type: integer
+          format: int64
+          description: 创建时间（Unix 秒）
+          example: 1719200000
+        updated_at:
+          type: integer
+          format: int64
+          description: 更新时间（Unix 秒）
+          example: 1719200000
+        expired_at:
+          type: integer
+          format: int64
+          nullable: true
+          description: 过期时间（可选）
+        lost_found:
+          $ref: "#/components/schemas/LostFoundExtra"
+        second_hand:
+          $ref: "#/components/schemas/SecondHandExtra"
+
+    Comment:
+      type: object
+      description: 评论对象
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1893046982369177601
+        school_id:
+          type: integer
+          format: int64
+          example: 1
+        post_id:
+          type: integer
+          format: int64
+          example: 1893046982369177600
+        user_id:
+          type: integer
+          format: int64
+          example: 100001
+        content:
+          type: string
+          example: "我有！私聊～"
+        parent_id:
+          type: integer
+          format: int64
+          description: 父评论 ID（0=一级评论）
+          example: 0
+        status:
+          type: integer
+          description: "1=正常 2=已删除"
+          enum: [1, 2]
+          example: 1
+        created_at:
+          type: integer
+          format: int64
+          example: 1719200100
+
+    CreatePostReq:
+      type: object
+      required: [type, title, content]
+      properties:
+        type:
+          type: integer
+          description: "帖子类型 (1=通用 2=失物招领 3=二手交易)"
+          enum: [1, 2, 3]
+          example: 1
+        title:
+          type: string
+          description: 标题（1-200 字）
+          example: "求拼车去高铁站"
+        content:
+          type: string
+          description: 正文（1-5000 字）
+          example: "本周六下午想去杭州东站，有一起拼车的同学吗？"
+        images:
+          type: array
+          items:
+            type: string
+          description: 图片 URL 列表（可选）
+        lost_found:
+          $ref: "#/components/schemas/LostFoundExtra"
+        second_hand:
+          $ref: "#/components/schemas/SecondHandExtra"
+
+    UpdatePostReq:
+      type: object
+      description: 至少更新 title / content / images 之一
+      properties:
+        title:
+          type: string
+          description: 新标题（可选）
+          example: "更新后的标题"
+        content:
+          type: string
+          description: 新正文（可选）
+          example: "更新后的正文"
+        images:
+          type: array
+          items:
+            type: string
+          description: 新图片列表（可选）
+        lost_found:
+          $ref: "#/components/schemas/LostFoundExtra"
+        second_hand:
+          $ref: "#/components/schemas/SecondHandExtra"
+
+    CreateCommentReq:
+      type: object
+      required: [post_id, content]
+      properties:
+        post_id:
+          type: integer
+          format: int64
+          description: 目标帖子 ID
+          example: 1893046982369177600
+        content:
+          type: string
+          description: 评论内容（1-500 字）
+          example: "这个帖子很有帮助！"
+
+    SearchReq:
+      type: object
+      required: [keyword]
+      properties:
+        keyword:
+          type: string
+          description: 搜索关键词
+          example: "高等数学教材"
+        type:
+          type: integer
+          description: "帖子类型筛选 (0=全部)"
+          enum: [0, 1, 2, 3]
+          default: 0
+        category:
+          type: integer
+          description: "物品分类筛选 (0=全部)"
+          enum: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+          default: 0
+        page:
+          type: integer
+          description: 页码（从 1 开始，默认 1）
+          default: 1
+          minimum: 1
+        page_size:
+          type: integer
+          description: 每页条数（默认 20，最大 100）
+          default: 20
+          minimum: 1
+          maximum: 100
+        sort:
+          type: integer
+          description: "排序方式 (0=默认 1=时间倒序 2=点赞数倒序 3=相关度)"
+          enum: [0, 1, 2, 3]
+          default: 0
+
+paths:
+
+  # ==================================================
+  # 帖子 CRUD
+  # ==================================================
+
+  /api/v1/content/posts:
+    post:
+      operationId: createPost
+      tags: [帖子]
+      summary: 发布帖子
+      description: |
+        创建新帖子，支持通用帖子 / 失物招领 / 二手交易三种类型。
+        - 需要鉴权 + 已绑定学校
+        - 创建后默认进入「审核中」状态（status=1）
+        - 服务端会执行 DFA 敏感词扫描，命中则拒绝
+        - type=2 时 `lost_found` 字段有效
+        - type=3 时 `second_hand` 字段有效
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePostReq" }
+            examples:
+              通用帖子:
+                value:
+                  type: 1
+                  title: "求拼车去高铁站"
+                  content: "本周六下午想去杭州东站，有一起拼车的同学吗？"
+                  images: []
+              失物招领:
+                value:
+                  type: 2
+                  title: "丢失校园卡"
+                  content: "今天中午在食堂二楼弄丢了蓝色校园卡，如有捡到请联系我！"
+                  images: ["https://cdn.example.com/card.jpg"]
+                  lost_found:
+                    location: "食堂二楼"
+                    category: 2
+                    contact: "微信: lisi2026"
+                    lost_or_found: 1
+              二手交易:
+                value:
+                  type: 3
+                  title: "出高等数学同济第七版"
+                  content: "九成新，无笔记划线，可面交。"
+                  images: ["https://cdn.example.com/book.jpg"]
+                  second_hand:
+                    price: 15.0
+                    original_price: 49.8
+                    condition: 2
+                    trade_method: 1
+                    category: 4
+      responses:
+        "200":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  post_id:
+                    type: integer
+                    format: int64
+                    description: 帖子 ID
+                  status:
+                    type: integer
+                    description: "帖子状态 (1=审核中)"
+                    example: 1
+                  created_at:
+                    type: integer
+                    format: int64
+                    description: 创建时间（Unix 秒）
+        "400":
+          description: 参数错误 / 敏感词命中
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    get:
+      operationId: listPosts
+      tags: [帖子]
+      summary: 帖子列表
+      description: |
+        帖子列表（游标分页 + 多维筛选），适合无限下拉场景。
+        - 需要鉴权（未绑定学校也可调用）
+        - school_id 从 JWT 自动注入，无需手动传
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/XTraceID"
+        - name: cursor
+          in: query
+          description: 上一页返回的 next_cursor，首次请求不传
+          schema: { type: string, example: "1893046982369177600" }
+        - name: page_size
+          in: query
+          description: 每页条数（默认 20）
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - name: type
+          in: query
+          description: "帖子类型筛选 (0=全部 1=通用 2=失物招领 3=二手交易)"
+          schema: { type: integer, enum: [0, 1, 2, 3], default: 0 }
+        - name: category
+          in: query
+          description: "物品分类筛选 (0=全部)"
+          schema: { type: integer, enum: [0, 1, 2, 3, 4, 5, 6, 7, 8], default: 0 }
+        - name: status
+          in: query
+          description: "帖子状态筛选 (默认 2=已发布)"
+          schema: { type: integer, enum: [0, 1, 2, 3, 4, 5, 6, 7], default: 2 }
+        - name: sort
+          in: query
+          description: "排序方式 (0=默认 1=时间倒序 2=点赞数倒序)"
+          schema: { type: integer, enum: [0, 1, 2], default: 1 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Post" }
+                  next_cursor:
+                    type: string
+                    description: 下一页游标，空字符串表示已到末尾
+                  has_more:
+                    type: boolean
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/content/posts/{id}:
+    get:
+      operationId: getPost
+      tags: [帖子]
+      summary: 帖子详情
+      description: |
+        获取单个帖子详情，含当前用户点赞状态和是否为作者。
+        - 需要鉴权（未绑定学校也可调用）
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/PostID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  post: { $ref: "#/components/schemas/Post" }
+                  is_liked:
+                    type: boolean
+                    description: 当前用户是否已点赞
+                  is_owner:
+                    type: boolean
+                    description: 当前用户是否为作者
+        "404":
+          description: 帖子不存在
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    put:
+      operationId: updatePost
+      tags: [帖子]
+      summary: 编辑帖子
+      description: |
+        编辑帖子（仅作者本人可操作）。
+        - 需要鉴权 + 已绑定学校
+        - 至少更新 title / content / images 之一
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/PostID"
+        - $ref: "#/components/parameters/XTraceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePostReq" }
+            examples:
+              修改标题:
+                value: { title: "更新后的标题" }
+              修改正文:
+                value: { content: "更新后的正文内容" }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "ok" }
+        "400":
+          description: 参数错误 / 非作者本人
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    delete:
+      operationId: deletePost
+      tags: [帖子]
+      summary: 删除帖子
+      description: |
+        软删除帖子（仅作者本人可操作）。
+        - 需要鉴权 + 已绑定学校
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/PostID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "ok" }
+        "400":
+          description: 非作者本人
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 评论
+  # ==================================================
+
+  /api/v1/content/posts/{id}/comments:
+    get:
+      operationId: listComments
+      tags: [评论]
+      summary: 评论列表
+      description: |
+        获取指定帖子的评论列表（游标分页）。
+        - 需要鉴权（未绑定学校也可调用）
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/PostID"
+        - $ref: "#/components/parameters/XTraceID"
+        - name: cursor
+          in: query
+          description: 上一页返回的 next_cursor
+          schema: { type: string }
+        - name: page_size
+          in: query
+          description: 每页条数（默认 20）
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments:
+                    type: array
+                    items: { $ref: "#/components/schemas/Comment" }
+                  next_cursor:
+                    type: string
+                    description: 下一页游标
+                  has_more:
+                    type: boolean
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/content/comments:
+    post:
+      operationId: createComment
+      tags: [评论]
+      summary: 发表评论
+      description: |
+        创建一级评论。
+        - 需要鉴权 + 已绑定学校
+        - 评论内容 1-500 字
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCommentReq" }
+            example:
+              post_id: 1893046982369177600
+              content: "这个帖子很有帮助！"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comment_id:
+                    type: integer
+                    format: int64
+                    description: 评论 ID
+                  created_at:
+                    type: integer
+                    format: int64
+                    description: 创建时间（Unix 秒）
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/content/comments/{id}:
+    delete:
+      operationId: deleteComment
+      tags: [评论]
+      summary: 删除评论
+      description: |
+        软删除评论（仅作者本人可操作）。
+        - 需要鉴权 + 已绑定学校
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/CommentID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "ok" }
+        "400":
+          description: 非作者本人
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 点赞
+  # ==================================================
+
+  /api/v1/content/posts/{id}/like:
+    post:
+      operationId: likePost
+      tags: [点赞]
+      summary: 点赞帖子
+      description: |
+        点赞帖子（幂等，重复点赞不增加计数）。
+        - 需要鉴权 + 已绑定学校
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/PostID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  liked:
+                    type: boolean
+                    description: 当前点赞状态
+                    example: true
+                  likes_count:
+                    type: integer
+                    description: 帖子总点赞数
+                    example: 16
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    delete:
+      operationId: unlikePost
+      tags: [点赞]
+      summary: 取消点赞
+      description: |
+        取消帖子点赞（幂等）。
+        - 需要鉴权 + 已绑定学校
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/PostID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  liked:
+                    type: boolean
+                    description: 当前点赞状态
+                    example: false
+                  likes_count:
+                    type: integer
+                    description: 帖子总点赞数
+                    example: 15
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 搜索
+  # ==================================================
+
+  /api/v1/content/search:
+    post:
+      operationId: searchContent
+      tags: [搜索]
+      summary: 关键词搜索
+      description: |
+        关键词搜索帖子（代理 Elasticsearch 查询）。
+        - 需要鉴权（未绑定学校也可调用）
+        - 搜索范围：标题（权重 x3）+ 正文
+        - 分页方式：传统页码分页（page + page_size）
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchReq" }
+            examples:
+              简单搜索:
+                value: { keyword: "高等数学教材" }
+              带筛选条件:
+                value:
+                  keyword: "教材"
+                  type: 3
+                  category: 4
+                  page: 1
+                  page_size: 10
+                  sort: 3
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Post" }
+                  total:
+                    type: integer
+                    format: int64
+                    description: 总匹配数
+                  page:
+                    type: integer
+                    description: 当前页码
+                  page_size:
+                    type: integer
+                    description: 每页条数
+                  took_ms:
+                    type: integer
+                    format: int64
+                    description: ES 查询耗时（毫秒）
+        "400":
+          description: keyword 必填
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }

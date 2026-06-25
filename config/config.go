@@ -59,6 +59,10 @@ type RabbitMQConfig struct {
 	Password string `mapstructure:"password"`
 	Address  string `mapstructure:"address"`
 }
+type ElasticsearchConfig struct {
+	Addresses []string `mapstructure:"addresses"`
+	Index     string   `mapstructure:"index"`
+}
 type EtcdConfig struct {
 	Address []string `mapstructure:"address"`
 }
@@ -75,15 +79,16 @@ type GatewayConfig struct {
 	RateBurst int     `mapstructure:"rateBurst"` // 必须加 mapstructure
 }
 type Config struct {
-	Service  map[string]ServiceConfig `mapstructure:"service"`
-	Mysql    MysqlConfig              `mapstructure:"mysql"`
-	Redis    RedisConfig              `mapstructure:"redis"`
-	Jwt      JwtConfig                `mapstructure:"jwt"`
-	RabbitMQ RabbitMQConfig           `mapstructure:"rabbitmq"`
-	Etcd     EtcdConfig               `mapstructure:"etcd"`
-	Jaeger   JaegerConfig             `mapstructure:"jaeger"`
-	Wechat   WechatConfig             `mapstructure:"wechat"`
-	Gateway  GatewayConfig            `mapstructure:"gateway"`
+	Service      map[string]ServiceConfig `mapstructure:"service"`
+	Mysql        MysqlConfig              `mapstructure:"mysql"`
+	Redis        RedisConfig              `mapstructure:"redis"`
+	Jwt          JwtConfig                `mapstructure:"jwt"`
+	RabbitMQ     RabbitMQConfig           `mapstructure:"rabbitmq"`
+	Etcd         EtcdConfig               `mapstructure:"etcd"`
+	Jaeger       JaegerConfig             `mapstructure:"jaeger"`
+	Wechat       WechatConfig             `mapstructure:"wechat"`
+	Gateway      GatewayConfig            `mapstructure:"gateway"`
+	Elasticsearch ElasticsearchConfig      `mapstructure:"elasticsearch"`
 }
 
 func InitConfig(configPath string) {
