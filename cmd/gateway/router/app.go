@@ -51,6 +51,17 @@ func NewRouter() *gin.Engine {
 		}
 	}
 
+		// Message Service – notification routes (Issue #46)
+		// 所有通知 API 仅需 JWT 鉴权，不需要 school 绑定（未绑定学校用户也可查看通知）
+		notifications := v1.Group("/notifications", middleware.JWTAuth())
+		{
+			notifications.GET("", handler.ListNotifications)
+			notifications.GET("/unread-count", handler.UnreadCount)
+			notifications.PUT("/:id/read", handler.MarkRead)
+			notifications.PUT("/read-all", handler.MarkAllRead)
+			notifications.DELETE("/:id", handler.DeleteNotification)
+		}
+
 	// Content Service – authenticated routes (Issue #22, #41)
 	//   12 个接口：帖子 CRUD / 评论 / 回复 / 点赞 / 搜索
 	//   - 读路由（List/Get/Search/ListComments）：仅 JWT，未绑定学校也能浏览
