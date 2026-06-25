@@ -1,0 +1,374 @@
+openapi: 3.0.3
+info:
+  title: CampusHelper - 消息服务 API
+  description: |
+    校园互助平台消息（通知）服务 HTTP 接口文档（经 Gateway 代理）。
+
+    **Base URL**: `http://localhost:50000`
+    **鉴权方式**: 所有接口均需 `Authorization: Bearer <access_token>`（通过 `/api/v1/user/login` 获取）
+    **链路追踪**: 请求头 `X-Trace-ID`（可选）→ 响应头 `X-Trace-ID`
+
+    **鉴权要求**: 所有消息接口仅需 JWT 鉴权，**不强制绑定学校**（即使未绑定学校的用户也能查看通知）
+
+    **统一错误响应格式**:
+    ```json
+    { "code": 40001, "message": "无效的通知 ID", "trace_id": "abc123..." }
+    ```
+
+    **通知类型（type 字段）**:
+    - `liked`: 你的帖子被点赞
+    - `replied`: 你的帖子/评论被回复
+    - `published`: 你的帖子审核通过
+    - `review_result`: 审核结果通知（通过/拒绝/下架）
+    - `taken_down`: 你的帖子被下架
+
+    **错误码分段**: `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
+  version: 1.0.0
+  contact:
+    name: CampusHelper Team
+
+servers:
+  - url: http://localhost:50000
+    description: 本地开发环境
+
+tags:
+  - name: 通知
+    description: 通知列表 / 未读数 / 标记已读 / 删除
+
+components:
+  securitySchemes:
+    BearerToken:
+      type: http
+      scheme: bearer
+      description: Access Token（JWT），通过 POST /api/v1/user/login 获取，默认 24 小时有效
+
+  parameters:
+    XTraceID:
+      name: X-Trace-ID
+      in: header
+      required: false
+      description: 自定义追踪 ID（32 字符 hex），缺失时自动生成
+      schema:
+        type: string
+        example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    NotificationID:
+      name: id
+      in: path
+      required: true
+      description: 通知 ID
+      schema:
+        type: integer
+        format: int64
+        example: 1893046982369177600
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: integer
+          description: 业务错误码（0=成功）
+          example: 40001
+        message:
+          type: string
+          description: 错误描述
+          example: "无效的通知 ID"
+        trace_id:
+          type: string
+          description: 链路追踪 ID
+          example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    Notification:
+      type: object
+      description: 通知对象
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 通知 ID
+          example: 1893046982369177600
+        type:
+          type: string
+          description: "通知类型 (liked / published / review_result / taken_down / replied)"
+          enum: [liked, published, review_result, taken_down, replied]
+          example: "liked"
+        title:
+          type: string
+          description: 通知标题（含快照）
+          example: "你的帖子收到了新的点赞"
+        content:
+          type: string
+          description: 通知正文/预览
+          example: "「张三」赞了你的帖子「求拼车去高铁站」"
+        from_user_id:
+          type: integer
+          format: int64
+          description: 触发者 user_id（系统通知为 0）
+          example: 100001
+        ref_type:
+          type: string
+          description: "关联类型 (post / comment)"
+          example: "post"
+        ref_id:
+          type: integer
+          format: int64
+          description: 关联 ID（帖子 ID 或评论 ID）
+          example: 1893046982369177601
+        is_read:
+          type: boolean
+          description: 是否已读
+          example: false
+        created_at:
+          type: integer
+          format: int64
+          description: 创建时间（Unix 秒）
+          example: 1719200000
+
+    BaseResponse:
+      type: object
+      description: 操作结果响应（网关层包装）
+      properties:
+        message:
+          type: string
+          description: 操作结果描述
+          example: "ok"
+
+paths:
+
+  # ==================================================
+  # 通知列表 / 未读数
+  # ==================================================
+
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      tags: [通知]
+      summary: 通知列表
+      description: |
+        获取当前用户的通知列表（游标分页，支持按类型筛选）。
+        - 需要 JWT 鉴权
+        - user_id / school_id 从 JWT 自动注入，无需手动传
+        - 游标分页，适合下拉加载场景
+        - 响应同时返回 unread_count（未读数），可省去单独查询
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/XTraceID"
+        - name: cursor
+          in: query
+          required: false
+          description: 上一页返回的 next_cursor，首次请求不传
+          schema:
+            type: string
+            example: "eyJsYXN0X2lkIjoxMjM0NTY3ODkwfQ=="
+        - name: page_size
+          in: query
+          required: false
+          description: 每页条数（默认 20，上限 50）
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+            example: 20
+        - name: type
+          in: query
+          required: false
+          description: "按通知类型筛选 (不传=全部)"
+          schema:
+            type: string
+            enum: [liked, published, review_result, taken_down, replied]
+            example: "liked"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  unread_count:
+                    type: integer
+                    format: int64
+                    description: 当前未读通知数
+                    example: 5
+                  has_more:
+                    type: boolean
+                    description: 是否还有更多数据
+                    example: true
+                  next_cursor:
+                    type: string
+                    description: 下一页游标，空字符串表示已到末尾
+                    example: "eyJsYXN0X2lkIjoxMjM0NTY3ODkwfQ=="
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                缺少token:
+                  summary: 缺少 Token (20001)
+                  value:
+                    code: 20001
+                    message: "缺少 token"
+                    trace_id: "abc123..."
+                无效:
+                  summary: Token 无效 (20003)
+                  value:
+                    code: 20003
+                    message: "token 无效"
+                    trace_id: "abc123..."
+
+  /api/v1/notifications/unread-count:
+    get:
+      operationId: unreadCount
+      tags: [通知]
+      summary: 未读通知数
+      description: |
+        获取当前用户的未读通知总数。
+        - 需要 JWT 鉴权
+        - 常用于小程序首页角标、Tab 红点展示
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    format: int64
+                    description: 未读通知数
+                    example: 5
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 标记已读
+  # ==================================================
+
+  /api/v1/notifications/{id}/read:
+    put:
+      operationId: markRead
+      tags: [通知]
+      summary: 标记单条通知为已读
+      description: |
+        标记指定通知为已读（仅本人通知可操作）。
+        - 需要 JWT 鉴权
+        - 通知 ID 通过 URL 路径参数传入
+        - 通知不存在或非本人通知返回 404
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/NotificationID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 标记成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BaseResponse" }
+              example: { message: "ok" }
+        "400":
+          description: 通知 ID 无效
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 40001
+                message: "无效的通知 ID"
+                trace_id: "abc123..."
+        "404":
+          description: 通知不存在或无权操作
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 50005
+                message: "通知不存在或无权操作"
+                trace_id: "abc123..."
+
+  /api/v1/notifications/read-all:
+    put:
+      operationId: markAllRead
+      tags: [通知]
+      summary: 标记全部通知为已读
+      description: |
+        将当前用户的所有未读通知标记为已读。
+        - 需要 JWT 鉴权
+        - 常用于用户点击「全部已读」按钮
+        - 响应 message 含本次已读的条数
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 标记成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: 含本次标记已读的条数
+                    example: "已将 12 条通知标记为已读"
+        "500":
+          description: 标记失败
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 删除
+  # ==================================================
+
+  /api/v1/notifications/{id}:
+    delete:
+      operationId: deleteNotification
+      tags: [通知]
+      summary: 删除单条通知
+      description: |
+        软删除指定通知（仅本人通知可操作）。
+        - 需要 JWT 鉴权
+        - 通知 ID 通过 URL 路径参数传入
+        - 通知不存在或非本人通知返回 404
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/NotificationID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BaseResponse" }
+              example: { message: "ok" }
+        "400":
+          description: 通知 ID 无效
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 40001
+                message: "无效的通知 ID"
+                trace_id: "abc123..."
+        "404":
+          description: 通知不存在或无权操作
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 50005
+                message: "通知不存在或无权操作"
+                trace_id: "abc123..."
