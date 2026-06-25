@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package pb;
+option go_package = "/task_pb";
+
+import "PB/common.proto";
+
+// =====================================================
+// TaskService 任务悬赏服务接口定义
+// 对应 docs/task-service-prd.md v1.0
+// =====================================================
+service TaskService {
+  // ---------- 任务 CRUD ----------
+  rpc CreateTask (CreateTaskRequest) returns (CreateTaskResponse);
+  rpc GetTask (GetTaskRequest) returns (Task);
+  rpc ListTasks (ListTasksRequest) returns (ListTasksResponse);
+  rpc UpdateTask (UpdateTaskRequest) returns (Task);
+  rpc DeleteTask (DeleteTaskRequest) returns (pb.BaseResponse);
+
+  // ---------- 接单操作 ----------
+  rpc ClaimTask (ClaimTaskRequest) returns (pb.BaseResponse);
+  rpc CompleteTask (CompleteTaskRequest) returns (pb.BaseResponse);
+  rpc CancelTask (CancelTaskRequest) returns (pb.BaseResponse);
+}
+
+// ─── 枚举 ───────────────────────────────────────────────────────────────────
+
+enum TaskType {
+  TASK_TYPE_UNSPECIFIED = 0;
+  TASK_TYPE_DELIVERY = 1;   // 跑腿
+  TASK_TYPE_CARPOOL = 2;    // 拼车
+  TASK_TYPE_BOUNTY = 3;     // 悬赏
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_OPEN = 1;         // 待接单
+  TASK_STATUS_IN_PROGRESS = 2;  // 进行中
+  TASK_STATUS_COMPLETED = 3;    // 已完成
+  TASK_STATUS_CANCELLED = 4;    // 已取消
+  TASK_STATUS_EXPIRED = 5;      // 已过期
+}
+
+// ─── 消息体 ─────────────────────────────────────────────────────────────────
+
+message Task {
+  int64 id = 1;
+  int64 school_id = 2;
+  int64 user_id = 3;           // 发布者
+  int64 claimant_id = 4;       // 接单者（0=未接单）
+  TaskType task_type = 5;
+  string title = 6;
+  string description = 7;
+  string location = 8;
+  string reward_desc = 9;
+
+  // 联系方式与留言（接单前隐藏，仅相关方可见）
+  string contact = 10;          // 发布者联系方式
+  string note = 11;             // 发布者留言
+  string claimant_contact = 12; // 接单者联系方式
+  string claimant_msg = 13;     // 接单者留言
+
+  TaskStatus status = 14;
+  int64 expired_at = 15;        // 过期时间（Unix 时间戳）
+  int64 created_at = 16;
+  int64 updated_at = 17;
+
+  // 冗余信息（跨服务填充）
+  string publisher_nickname = 18;
+  string publisher_avatar = 19;
+}
+
+// ─── CreateTask ─────────────────────────────────────────────────────────────
+
+message CreateTaskRequest {
+  int64 school_id = 1;
+  int64 user_id = 2;
+  TaskType task_type = 3;
+  string title = 4;
+  string description = 5;
+  string location = 6;
+  string reward_desc = 7;
+  string contact = 8;           // 发布者联系方式
+  string note = 9;              // 发布者留言
+  int64 expired_at = 10;        // 过期时间（可选，默认 24h）
+}
+
+message CreateTaskResponse {
+  int64 task_id = 1;
+  int64 status = 2;
+  int64 created_at = 3;
+}
+
+// ─── GetTask ────────────────────────────────────────────────────────────────
+
+message GetTaskRequest {
+  int64 school_id = 1;
+  int64 task_id = 2;
+  int64 user_id = 3;   // 当前请求用户（用于判断是否展示联系方式）
+}
+
+// ─── ListTasks ──────────────────────────────────────────────────────────────
+
+message ListTasksRequest {
+  int64 school_id = 1;
+  string cursor = 2;
+  int32 page_size = 3;
+  TaskType task_type = 4;       // 筛选（可选）
+  TaskStatus status = 5;        // 筛选（可选，默认 open）
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+}
+
+// ─── UpdateTask ─────────────────────────────────────────────────────────────
+
+message UpdateTaskRequest {
+  int64 school_id = 1;
+  int64 task_id = 2;
+  int64 user_id = 3;
+  string title = 4;
+  string description = 5;
+  string location = 6;
+  string reward_desc = 7;
+  string contact = 8;
+  string note = 9;
+}
+
+// ─── DeleteTask ─────────────────────────────────────────────────────────────
+
+message DeleteTaskRequest {
+  int64 school_id = 1;
+  int64 task_id = 2;
+  int64 user_id = 3;
+}
+
+// ─── ClaimTask ──────────────────────────────────────────────────────────────
+
+message ClaimTaskRequest {
+  int64 school_id = 1;
+  int64 task_id = 2;
+  int64 user_id = 3;          // 接单者
+  string contact = 4;         // 接单者联系方式（必填）
+  string message = 5;         // 接单者留言（可选）
+}
+
+// ─── CompleteTask ───────────────────────────────────────────────────────────
+
+message CompleteTaskRequest {
+  int64 school_id = 1;
+  int64 task_id = 2;
+  int64 user_id = 3;          // 接单者
+}
+
+// ─── CancelTask ─────────────────────────────────────────────────────────────
+
+message CancelTaskRequest {
+  int64 school_id = 1;
+  int64 task_id = 2;
+  int64 user_id = 3;
+}
+
+// protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/task.proto

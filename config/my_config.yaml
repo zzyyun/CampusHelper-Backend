@@ -13,6 +13,7 @@ mysql:
     user: "campus_user"
     content: "campus_content"
     message: "campus_message"
+    task: "campus_task"
 
 redis:
   username: ""
@@ -64,4 +65,8 @@ service:
   message:
     name: "message-service"
     address: "127.0.0.1:50004"
+    loadBalance: false
+  task:
+    name: "task-service"
+    address: "127.0.0.1:50003"
     loadBalance: false
