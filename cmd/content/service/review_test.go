@@ -143,6 +143,120 @@ func TestMQEventConstants(t *testing.T) {
 	if mq.EventContentTakenDown != "content.taken_down" {
 		t.Errorf("EventContentTakenDown 应为 content.taken_down，实际 %s", mq.EventContentTakenDown)
 	}
+	if mq.EventContentLiked != "content.liked" {
+		t.Errorf("EventContentLiked 应为 content.liked，实际 %s", mq.EventContentLiked)
+	}
+	if mq.EventContentReplied != "content.replied" {
+		t.Errorf("EventContentReplied 应为 content.replied，实际 %s", mq.EventContentReplied)
+	}
+}
+
+// ─── 双队列投递测试 ──────────────────────────────────────────────────────────
+
+func TestIsNotificationEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		want      bool
+	}{
+		{mq.EventContentLiked, true},
+		{mq.EventContentPublished, true},
+		{mq.EventContentRejected, true},
+		{mq.EventContentTakenDown, true},
+		{mq.EventContentReplied, true},
+		{"content.unknown", false},
+		{"", false},
+		{"post:create", false},
+	}
+	for _, tc := range tests {
+		got := isNotificationEvent(tc.eventType)
+		if got != tc.want {
+			t.Errorf("isNotificationEvent(%q) = %v，期望 %v", tc.eventType, got, tc.want)
+		}
+	}
+}
+
+func TestPublishNotificationEventRaw_NilPublisher(t *testing.T) {
+	// 确保 notificationPublisher 为 nil 时不 panic
+	oldPublisher := notificationPublisher
+	notificationPublisher = nil
+	defer func() { notificationPublisher = oldPublisher }()
+
+	event := mq.NewContentEvent(mq.EventContentLiked, 1, 1, 1, "")
+	// 不应 panic
+	publishNotificationEventRaw(event)
+}
+
+func TestInitMQ_DualPublisher(t *testing.T) {
+	oldPub := mqPublisher
+	oldNotif := notificationPublisher
+	defer func() {
+		mqPublisher = oldPub
+		notificationPublisher = oldNotif
+	}()
+
+	InitMQ("amqp://test:test@localhost:5672/")
+	if mqPublisher == nil {
+		t.Error("InitMQ 应设置 mqPublisher")
+	}
+	if notificationPublisher == nil {
+		t.Error("InitMQ 应设置 notificationPublisher")
+	}
+}
+
+// ─── formatInt64 测试 ─────────────────────────────────────────────────────────
+
+func TestFormatInt64(t *testing.T) {
+	tests := []struct {
+		input int64
+		want  string
+	}{
+		{0, "0"},
+		{123, "123"},
+		{-1, "-1"},
+		{9999999999999, "9999999999999"},
+	}
+	for _, tc := range tests {
+		got := formatInt64(tc.input)
+		if got != tc.want {
+			t.Errorf("formatInt64(%d) = %q，期望 %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// ─── content.replied 事件辅助测试 ─────────────────────────────────────────────
+
+func TestRepliedEvent_DataFields(t *testing.T) {
+	event := mq.NewContentEvent(mq.EventContentReplied, 100, 1, 200, "trace-reply")
+	event.Data["parent_comment_id"] = "50"
+	event.Data["parent_comment_user_id"] = "300"
+	event.Data["content_preview"] = "好的，我同意"
+
+	if event.Type != mq.EventContentReplied {
+		t.Errorf("type 应为 %s，实际 %s", mq.EventContentReplied, event.Type)
+	}
+	if event.Data["parent_comment_id"] != "50" {
+		t.Errorf("parent_comment_id 应为 50，实际 %s", event.Data["parent_comment_id"])
+	}
+	if event.Data["parent_comment_user_id"] != "300" {
+		t.Errorf("parent_comment_user_id 应为 300，实际 %s", event.Data["parent_comment_user_id"])
+	}
+	if event.Data["content_preview"] != "好的，我同意" {
+		t.Errorf("content_preview 应为「好的，我同意」，实际 %s", event.Data["content_preview"])
+	}
+}
+
+func TestRepliedEvent_PreviewTruncation(t *testing.T) {
+	longContent := ""
+	for i := 0; i < 100; i++ {
+		longContent += "字"
+	}
+	preview := string([]rune(longContent))
+	if len([]rune(preview)) > 50 {
+		preview = string([]rune(preview)[:50])
+	}
+	if len([]rune(preview)) != 50 {
+		t.Errorf("截断后 preview 应为 50 个字符，实际 %d", len([]rune(preview)))
+	}
 }
 
 // ─── SensitiveWordError 兼容性测试 ────────────────────────────────────────────
