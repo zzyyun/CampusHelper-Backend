@@ -375,33 +375,23 @@ func (c propagationMapCarrier) Keys() []string {
 
 // userIDFromCtx reads the user ID injected by the gateway via gRPC metadata.
 // Gateway sets "user-id" (stringified int64) in outgoing metadata after JWT validation.
+// 返回 0 表示无法获取用户身份（未认证）。
 func userIDFromCtx(ctx context.Context) int64 {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		fmt.Printf("❌ userIDFromCtx: 无法从context获取metadata\n")
 		return 0
 	}
 
-	// 调试：打印所有收到的metadata
-	fmt.Printf("🔍 userIDFromCtx: 收到的metadata keys: ")
-	for key := range md {
-		fmt.Printf("%s ", key)
-	}
-	fmt.Printf("\n")
-
 	vals := md.Get("user-id")
 	if len(vals) == 0 {
-		fmt.Printf("❌ userIDFromCtx: metadata中未找到user-id键\n")
 		return 0
 	}
 
 	id, err := strconv.ParseInt(vals[0], 10, 64)
 	if err != nil {
-		fmt.Printf("❌ userIDFromCtx: 解析user-id失败: %v, 原始值: %s\n", err, vals[0])
 		return 0
 	}
 
-	fmt.Printf("✅ userIDFromCtx: 成功解析user-id: %d\n", id)
 	return id
 }
 
