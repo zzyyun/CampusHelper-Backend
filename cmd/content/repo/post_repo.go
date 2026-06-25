@@ -319,3 +319,59 @@ func ListComments(schoolID, postID int64, cursor int64, pageSize int) ([]content
 	}
 	return comments, nextCursor, nil
 }
+
+// ListRepliesByParent 游标分页查询某条一级评论下的所有二级回复。
+func ListRepliesByParent(schoolID, parentID int64, cursor int64, pageSize int) ([]content_db.PostComment, int64, error) {
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 20
+	}
+	q := mustContentDB().
+		Model(&content_db.PostComment{}).
+		Scopes(db.SchoolScope(schoolID)).
+		Where("parent_id = ? AND status = 1", parentID)
+
+	if cursor > 0 {
+		q = q.Where("id > ?", cursor)
+	}
+
+	var comments []content_db.PostComment
+	if err := q.Order("id ASC").Limit(pageSize + 1).Find(&comments).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var nextCursor int64
+	if len(comments) > pageSize {
+		nextCursor = comments[pageSize-1].ID
+		comments = comments[:pageSize]
+	}
+	return comments, nextCursor, nil
+}
+
+// CascadeSoftDeleteReplies 软删除指定父评论下的所有二级回复。
+// 返回删除的条数（用于 comment_count 递减）。
+func CascadeSoftDeleteReplies(schoolID, parentID int64) (int, error) {
+	gdb := mustContentDB()
+	res := gdb.
+		Model(&content_db.PostComment{}).
+		Scopes(db.SchoolScope(schoolID)).
+		Where("parent_id = ? AND status = 1", parentID).
+		Updates(map[string]interface{}{
+			"status":     2,
+			"deleted_at": gorm.Expr("NOW()"),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return int(res.RowsAffected), nil
+}
+
+// DecCommentCountBy 按指定数量原子递减帖子 comment_count。
+// 使用 GREATEST 保护防止减成负数。
+func DecCommentCountBy(postID int64, delta int32) error {
+	gdb := mustContentDB()
+	return gdb.
+		Model(&content_db.Post{}).
+		Where("id = ?", postID).
+		UpdateColumn("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", delta)).
+		Error
+}

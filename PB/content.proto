@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package pb;
-option go_package = "go_projects/praProject1/PB/pb/content_pb";
+option go_package = "/content_pb";
 
 import "PB/common.proto";
 
@@ -23,12 +23,14 @@ service ContentService {
   rpc ListPosts (ListPostsRequest) returns (ListPostsResponse);
 
   // ---------- 评论与点赞（供 Gateway 调用） ----------
-  // 创建一级评论
+  // 创建一级/二级评论
   rpc CreateComment (CreateCommentRequest) returns (CreateCommentResponse);
-  // 删除评论（仅作者本人）
+  // 删除评论（仅作者本人，删除一级评论时级联删除其下回复）
   rpc DeleteComment (DeleteCommentRequest) returns (DeleteCommentResponse);
-  // 评论列表（游标分页）
+  // 评论列表（游标分页，仅返回一级评论）
   rpc ListComments (ListCommentsRequest) returns (ListCommentsResponse);
+  // 查询某条一级评论下的所有回复（游标分页）
+  rpc ListCommentReplies (ListCommentRepliesRequest) returns (ListCommentRepliesResponse);
   // 点赞帖子
   rpc LikePost (LikePostRequest) returns (LikePostResponse);
   // 取消点赞
@@ -295,6 +297,18 @@ message ListCommentsRequest {
 
 message ListCommentsResponse {
   repeated Comment comments = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message ListCommentRepliesRequest {
+  int64 school_id = 1;
+  int64 parent_comment_id = 2;  // 父评论 ID（必须是一级评论）
+  pb.CursorPaginationReq pagination = 3;
+}
+
+message ListCommentRepliesResponse {
+  repeated Comment replies = 1;
   string next_cursor = 2;
   bool has_more = 3;
 }
