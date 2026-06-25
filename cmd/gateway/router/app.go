@@ -51,8 +51,8 @@ func NewRouter() *gin.Engine {
 		}
 	}
 
-	// Content Service – authenticated routes (Issue #22)
-	//   11 个接口：帖子 CRUD / 评论 / 点赞 / 搜索
+	// Content Service – authenticated routes (Issue #22, #41)
+	//   12 个接口：帖子 CRUD / 评论 / 回复 / 点赞 / 搜索
 	//   - 读路由（List/Get/Search/ListComments）：仅 JWT，未绑定学校也能浏览
 	//   - 写路由（Create/Update/Delete/Like/Comment）：JWT + RequireSchoolBound
 	content := v1.Group("/content", middleware.JWTAuth())
@@ -61,6 +61,7 @@ func NewRouter() *gin.Engine {
 		content.GET("/posts", handler.ListPosts)                    // 列表
 		content.GET("/posts/:id", handler.GetPost)                  // 详情
 		content.GET("/posts/:id/comments", handler.ListComments)    // 评论列表
+		content.GET("/comments/:id/replies", handler.ListCommentReplies) // 回复列表
 		content.POST("/search", handler.SearchContent)              // 关键词搜索
 
 		// 写：JWT + 学校绑定
