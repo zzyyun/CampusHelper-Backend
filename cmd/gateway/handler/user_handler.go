@@ -192,6 +192,42 @@ func UpdateUserInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
+
+// ─── GET /api/v1/schools ─────────────────────────────────────────────────────
+
+type listSchoolsReq struct {
+	Keyword  string `form:"keyword"`
+	PageSize int32  `form:"page_size"`
+	Cursor   string `form:"cursor"`
+}
+
+// ListSchools 搜索/列出学校。JWT 鉴权，不强绑学校。
+func ListSchools(c *gin.Context) {
+	var req listSchoolsReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
+		return
+	}
+	ctx, ok := authCtx(c)
+	if !ok {
+		return
+	}
+	pageSize := req.PageSize
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 20
+	}
+	resp, err := client.UserClient.ListSchools(ctx, &user_pb.ListSchoolsRequest{
+		Keyword:  req.Keyword,
+		PageSize: pageSize,
+		Cursor:   req.Cursor,
+	})
+	if err != nil {
+		middleware.GRPCErrorResponse(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // ─── context helpers ─────────────────────────────────────────────────────────
 
 // baseCtx 提取请求 context（携带 OTel trace 上下文）。
