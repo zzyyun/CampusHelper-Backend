@@ -1,0 +1,422 @@
+openapi: 3.0.3
+info:
+  title: CampusHelper - 用户服务 API
+  description: |
+    校园互助平台用户服务 HTTP 接口文档（经 Gateway 代理）。
+
+    **Base URL**: `http://localhost:8082`
+    **链路追踪**: 请求头 `X-Trace-ID`（可选）→ 响应头 `X-Trace-ID`
+
+    **统一错误响应格式**:
+    ```json
+    { "code": 20002, "message": "token 已过期", "trace_id": "abc123..." }
+    ```
+
+    **错误码分段**: `1xxxx`=第三方依赖 | `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
+
+    **Token 机制**：
+    - 登录成功返回 `access_token`（24h）+ `refresh_token`（7d）
+    - `access_token` 过期后调用 `/api/v1/user/refresh` 续签，获取新的 `access_token`
+  version: 1.0.0
+  contact:
+    name: CampusHelper Team
+
+servers:
+  - url: http://localhost:8082
+    description: 本地开发环境
+
+tags:
+  - name: 认证
+    description: 登录 / 刷新 Token（无需鉴权）
+  - name: 个人信息
+    description: 获取 / 更新用户信息（需要鉴权）
+
+components:
+  securitySchemes:
+    BearerToken:
+      type: http
+      scheme: bearer
+      description: Access Token（JWT），通过 POST /api/v1/user/login 获取，默认 24 小时有效
+
+  parameters:
+    XTraceID:
+      name: X-Trace-ID
+      in: header
+      required: false
+      description: 自定义追踪 ID（32 字符 hex），缺失时自动生成
+      schema:
+        type: string
+        example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: integer
+          description: 业务错误码（0=成功）
+          example: 20002
+        message:
+          type: string
+          description: 错误描述
+          example: "token 已过期"
+        trace_id:
+          type: string
+          description: 链路追踪 ID
+          example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    WxLoginReq:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: 微信 wx.login() 返回的临时 code
+          example: "0a1b2c3d4e5f"
+
+    WxLoginResp:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: Access Token（JWT，默认 24 小时有效）
+        refresh_token:
+          type: string
+          description: Refresh Token（JWT，默认 7 天有效）
+        is_bound_campus:
+          type: boolean
+          description: 是否已绑定学校
+        school_id:
+          type: integer
+          format: int64
+          description: 已绑定的学校 ID（未绑定时为 0）
+          example: 0
+
+    RefreshTokenReq:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh Token
+          example: "eyJhbGciOiJIUzI1NiIs..."
+
+    RefreshTokenResp:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: 新的 Access Token（默认 24h）
+        is_bound_campus:
+          type: boolean
+          description: 是否已绑定学校
+        school_id:
+          type: integer
+          format: int64
+          description: 用户当前学校 ID（未绑定则为 0）
+          example: 1
+
+    BindCampusReq:
+      type: object
+      required: [school_name]
+      properties:
+        school_name:
+          type: string
+          description: 学校名称（模糊匹配第一个）
+          example: "浙江大学"
+
+    UpdateUserInfoReq:
+      type: object
+      description: nickname 和 avatar_url 至少传一个
+      properties:
+        nickname:
+          type: string
+          description: 新昵称（2-20 字符，可选）
+          example: "张三"
+        avatar_url:
+          type: string
+          description: 新头像 URL（可选）
+          example: "https://cdn.example.com/avatar/001.jpg"
+
+    UserInfoResp:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+          example: 100001
+        nickname:
+          type: string
+          example: "张三"
+        avatar_url:
+          type: string
+          example: "https://cdn.example.com/avatar/001.jpg"
+        school_id:
+          type: integer
+          format: int64
+          example: 1
+        school_name:
+          type: string
+          example: "浙江大学"
+        role:
+          type: string
+          description: "用户角色 (student / admin / super_admin)"
+          example: "student"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-24T10:00:00Z"
+
+paths:
+
+  # ==================================================
+  # 认证（白名单，无需鉴权）
+  # ==================================================
+
+  /api/v1/user/login:
+    post:
+      operationId: userLogin
+      tags: [认证]
+      summary: 微信登录
+      description: |
+        微信小程序登录，通过 wx.login() 获取的 code 换取双 Token。
+        - **无需鉴权**
+        - 返回 `access_token`（24h）+ `refresh_token`（7d）
+        - 返回 `is_bound_campus` 标识是否已绑定学校
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WxLoginReq" }
+            example:
+              code: "0a1b2c3d4e5f"
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WxLoginResp" }
+        "401":
+          description: 微信 code 无效
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 10001
+                message: "invalid wechat code"
+                trace_id: "abc123..."
+        "503":
+          description: 微信服务不可用
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 10002
+                message: "wechat service unavailable"
+                trace_id: "abc123..."
+
+  /api/v1/user/refresh:
+    post:
+      operationId: userRefresh
+      tags: [认证]
+      summary: 刷新 Access Token
+      description: |
+        用 Refresh Token 换取新的 Access Token。
+        - **无需鉴权**
+        - access_token 过期后前端应调用此接口续签
+        - 会返回最新的 school_id / is_bound_campus（用户可能已重新绑定学校）
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshTokenReq" }
+            example:
+              refresh_token: "eyJhbGciOiJIUzI1NiIs..."
+      responses:
+        "200":
+          description: 续签成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefreshTokenResp" }
+        "401":
+          description: Refresh Token 无效或过期
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                过期:
+                  summary: Refresh Token 过期 (20004)
+                  value:
+                    code: 20004
+                    message: "refresh token expired"
+                    trace_id: "abc123..."
+                无效:
+                  summary: Refresh Token 无效 (20005)
+                  value:
+                    code: 20005
+                    message: "refresh token invalid"
+                    trace_id: "abc123..."
+
+  # ==================================================
+  # 个人信息（需要鉴权）
+  # ==================================================
+
+  /api/v1/user/me:
+    get:
+      operationId: getCurrentUser
+      tags: [个人信息]
+      summary: 获取当前用户信息
+      description: |
+        获取当前登录用户的详细信息（含学校、角色）。
+        - 需要 JWT 鉴权
+        - 未绑定学校也可调用（可用于查看绑定状态）
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserInfoResp" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                缺少token:
+                  summary: 缺少 Token (20001)
+                  value:
+                    code: 20001
+                    message: "缺少 token"
+                    trace_id: "abc123..."
+                过期:
+                  summary: Token 过期 (20002)
+                  value:
+                    code: 20002
+                    message: "token 已过期"
+                    trace_id: "abc123..."
+                无效:
+                  summary: Token 无效 (20003)
+                  value:
+                    code: 20003
+                    message: "token 无效"
+                    trace_id: "abc123..."
+
+  /api/v1/user/campus:
+    put:
+      operationId: bindCampus
+      tags: [个人信息]
+      summary: 绑定学校
+      description: |
+        用户绑定学校，按名称模糊匹配第一个。
+        - 需要 JWT 鉴权
+        - 不要求已绑定学校（绑定操作本身不强制 RequireSchoolBound）
+        - 绑定成功后后续请求 JWT 会携带 school_id
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BindCampusReq" }
+            example:
+              school_name: "浙江大学"
+      responses:
+        "200":
+          description: 绑定成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "ok"
+        "400":
+          description: 学校不存在
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 40001
+                message: "school not found"
+                trace_id: "abc123..."
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/user/info:
+    put:
+      operationId: updateUserInfo
+      tags: [个人信息]
+      summary: 更新用户信息
+      description: |
+        更新当前用户的昵称和/或头像。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - nickname 和 avatar_url 至少传一个
+        - 昵称 2-20 字符
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUserInfoReq" }
+            examples:
+              仅修改昵称:
+                value: { nickname: "新昵称" }
+              仅修改头像:
+                value: { avatar_url: "https://cdn.example.com/avatar/new.jpg" }
+              同时修改:
+                value:
+                  nickname: "新昵称"
+                  avatar_url: "https://cdn.example.com/avatar/new.jpg"
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "ok"
+        "400":
+          description: 参数错误（昵称格式 / 至少传一个字段）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                至少一个:
+                  summary: 未传任何字段
+                  value:
+                    code: 40001
+                    message: "至少需要更新昵称或头像"
+                    trace_id: "abc123..."
+                昵称过长:
+                  summary: 昵称格式错误
+                  value:
+                    code: 40001
+                    message: "昵称长度必须在2-20个字符之间"
+                    trace_id: "abc123..."
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 20006
+                message: "未绑定学校，无法访问该接口"
+                trace_id: "abc123..."

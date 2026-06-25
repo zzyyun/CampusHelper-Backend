@@ -31,12 +31,21 @@ func NewESSyncConsumer(mqAddr string, esClient *es.Client) *ESSyncConsumer {
 }
 
 // Start 启动消费者（阻塞调用）。
+// 内部 mq.Consumer 为 nil 时（如未正确构造）直接返回 ctx 错误。
 func (c *ESSyncConsumer) Start(ctx context.Context) error {
+	if c.consumer == nil {
+		log.Printf("[ES-Sync] Consumer 未初始化，无法启动")
+		return nil
+	}
 	return c.consumer.Start(ctx)
 }
 
 // Stop 停止消费者。
+// 内部 mq.Consumer 为 nil 时为 no-op，保证优雅停止链路不 panic。
 func (c *ESSyncConsumer) Stop() {
+	if c.consumer == nil {
+		return
+	}
 	c.consumer.Stop()
 }
 

@@ -26,7 +26,13 @@ jwt:
 rabbitmq:
   username: "yun"
   password: "123456"
-  address: "localhost:5672"
+  address: "localhost:15672"
+
+# Elasticsearch 节点地址（用于 Content Service 帖子索引与搜索）
+elasticsearch:
+  addresses:
+    - "http://127.0.0.1:9200"
+  index: "campus_posts"
 
 etcd:
   address:
@@ -41,7 +47,7 @@ wechat:
   appSecret: "bed491834c49bbf9bfd66387936f176e"
 
 gateway:
-  address: "0.0.0.0:8082"
+  address: "0.0.0.0:50000"
   rateLimit: 100
   rateBurst: 200
 

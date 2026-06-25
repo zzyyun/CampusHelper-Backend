@@ -15,6 +15,7 @@ import (
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"
+	es_pkg "go_projects/praProject1/pkg/es"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
 	"go_projects/praProject1/pkg/tracer"
 
@@ -53,6 +54,46 @@ func main() {
 	pkg_etcd.InitEtcd()
 	defer pkg_etcd.CloseEtcd()
 
+	// ── RabbitMQ Publisher（用于审核/点赞等事件发布） ────────────────────────
+	mqAddr := fmt.Sprintf("amqp://%s:%s@%s/",
+		config.Conf.RabbitMQ.Username, config.Conf.RabbitMQ.Password,
+		config.Conf.RabbitMQ.Address)
+	content_service.InitMQ(mqAddr)
+	defer func() {
+		// Publisher 关闭（如需）
+	}()
+
+	// ── Elasticsearch + ES Sync Consumer（异步同步消费者） ──────────────────
+	esAddrs := config.Conf.Elasticsearch.Addresses
+	esIndex := config.Conf.Elasticsearch.Index
+	if len(esAddrs) == 0 {
+		esAddrs = []string{"http://127.0.0.1:9200"}
+	}
+	if esIndex == "" {
+		esIndex = "campus_posts"
+	}
+	content_service.InitES(esAddrs)
+	esClient, err := es_pkg.NewClient(esAddrs, esIndex)
+	if err != nil {
+		log.Printf("[content-service] WARN: ES 客户端创建失败，搜索功能降级: %v", err)
+	}
+
+	// 启动 ES 同步消费者 goroutine（独立 ctx，优雅停止）
+	esConsumerCtx, esConsumerCancel := context.WithCancel(context.Background())
+	defer esConsumerCancel()
+	var esConsumer *content_service.ESSyncConsumer
+	if esClient != nil {
+		esConsumer = content_service.NewESSyncConsumer(mqAddr, esClient)
+		go func() {
+			log.Printf("[content-service] ES Sync Consumer 启动中...")
+			if err := esConsumer.Start(esConsumerCtx); err != nil {
+				log.Printf("[content-service] ES Sync Consumer 退出: %v", err)
+			}
+		}()
+		defer esConsumer.Stop()
+		fmt.Println("[content-service] ES Sync Consumer 已注册（异步启动）")
+	}
+
 	// ── gRPC Server ──────────────────────────────────────────────────────────
 	svcCfg, ok := config.Conf.Service["content"]
 	if !ok {
@@ -89,6 +130,7 @@ func main() {
 
 	<-quit
 	fmt.Println("[content-service] shutting down…")
+	esConsumerCancel() // 通知 ES 消费者停止
 	regCleanup()
 	grpcServer.GracefulStop()
 }
