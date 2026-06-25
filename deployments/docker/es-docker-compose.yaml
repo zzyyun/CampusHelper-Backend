@@ -1,0 +1,66 @@
+# 校园互助平台 - Elasticsearch 部署
+# 仅部署 ES（+ 可选 Kibana），MySQL/Redis/RabbitMQ 由项目其它环境提供
+#
+# 用法：
+#   cd deployments/docker
+#   docker compose -f es-docker-compose.yaml up -d --build
+#
+# 验证：
+#   curl http://127.0.0.1:9200
+#   curl http://127.0.0.1:9200/campus_posts/_mapping
+#
+# 停止 / 清理：
+#   docker compose -f es-docker-compose.yaml down        # 仅停容器（保留数据卷）
+#   docker compose -f es-docker-compose.yaml down -v     # 同时删除数据卷（彻底清空）
+
+services:
+  es:
+    build:
+      context: ./es-with-ik          # 复用上面的 Dockerfile（ES 8.12 + IK 分词）
+    container_name: campus-es
+    environment:
+      - discovery.type=single-node    # 单节点模式，开发环境够用
+      - xpack.security.enabled=false  # 关闭安全认证，配合代码里的 http:// 无密码连接
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m   # 限制堆内存，避免本机内存吃紧
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"                  # REST API（代码连接的就是这个）
+      - "9300:9300"                  # 节点间通信（单节点可不暴露，保留便于排查）
+    networks:
+      - campus-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s              # ES 启动慢，给足冷启动时间
+
+  # 可选：Kibana 可视化，需要查看索引数据 / 调试 DSL 时启动
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.0
+    container_name: campus-kibana
+    depends_on:
+      es:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es:9200
+      - I18N_LOCALE=zh-CN            # Kibana 界面中文化
+    ports:
+      - "5601:5601"
+    networks:
+      - campus-net
+    profiles: ["kibana"]             # 默认不启动，加 --profile kibana 才拉起
+
+volumes:
+  es-data:
+    name: campus-es-data
+
+networks:
+  campus-net:
+    name: campus-net

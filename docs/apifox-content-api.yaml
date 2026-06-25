@@ -4,7 +4,7 @@ info:
   description: |
     校园互助平台内容服务 HTTP 接口文档（经 Gateway 代理）。
 
-    **Base URL**: `http://localhost:8082`
+    **Base URL**: `http://localhost:50000`
     **鉴权方式**: 所有接口均需 `Authorization: Bearer <access_token>`（通过 `/api/v1/user/login` 获取）
     **链路追踪**: 请求头 `X-Trace-ID`（可选）→ 响应头 `X-Trace-ID`
 
@@ -13,20 +13,23 @@ info:
     { "code": 20006, "message": "未绑定学校，无法访问该接口", "trace_id": "abc123..." }
     ```
 
-    **错误码分段**: `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
-  version: 1.0.0
+    **错误码分段**: `1xxxx`=第三方依赖 | `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
+
+    **写接口鉴权要求**: JWT + 已绑定学校（`RequireSchoolBound` 中间件，未绑定返回 403 / 20006）
+    **读接口鉴权要求**: 仅 JWT（未绑定学校也可浏览）
+  version: 1.1.0
   contact:
     name: CampusHelper Team
 
 servers:
-  - url: http://localhost:8082
+  - url: http://localhost:50000
     description: 本地开发环境
 
 tags:
   - name: 帖子
     description: 帖子的创建 / 列表 / 详情 / 编辑 / 删除
   - name: 评论
-    description: 评论的创建 / 列表 / 删除
+    description: 评论 / 二级回复的创建 / 列表 / 删除
   - name: 点赞
     description: 帖子点赞 / 取消点赞
   - name: 搜索
@@ -63,7 +66,7 @@ components:
       name: id
       in: path
       required: true
-      description: 评论 ID
+      description: 评论 ID（一级评论）
       schema:
         type: integer
         format: int64
@@ -229,7 +232,7 @@ components:
         parent_id:
           type: integer
           format: int64
-          description: 父评论 ID（0=一级评论）
+          description: 父评论 ID（0=一级评论，>0=二级回复）
           example: 0
         status:
           type: integer
@@ -293,6 +296,10 @@ components:
     CreateCommentReq:
       type: object
       required: [post_id, content]
+      description: |
+        支持一级评论与二级回复，通过 parent_id 区分：
+        - parent_id = 0（默认）：发表一级评论
+        - parent_id > 0：对指定一级评论发表二级回复
       properties:
         post_id:
           type: integer
@@ -303,6 +310,12 @@ components:
           type: string
           description: 评论内容（1-500 字）
           example: "这个帖子很有帮助！"
+        parent_id:
+          type: integer
+          format: int64
+          description: "父评论 ID（0=一级评论，>0=二级回复）"
+          default: 0
+          example: 0
 
     SearchReq:
       type: object
@@ -352,7 +365,7 @@ paths:
       summary: 发布帖子
       description: |
         创建新帖子，支持通用帖子 / 失物招领 / 二手交易三种类型。
-        - 需要鉴权 + 已绑定学校
+        - 需要 JWT 鉴权 + 已绑定学校
         - 创建后默认进入「审核中」状态（status=1）
         - 服务端会执行 DFA 敏感词扫描，命中则拒绝
         - type=2 时 `lost_found` 字段有效
@@ -436,7 +449,7 @@ paths:
       summary: 帖子列表
       description: |
         帖子列表（游标分页 + 多维筛选），适合无限下拉场景。
-        - 需要鉴权（未绑定学校也可调用）
+        - 需要 JWT 鉴权（未绑定学校也可调用）
         - school_id 从 JWT 自动注入，无需手动传
       security: [{BearerToken: []}]
       parameters:
@@ -494,7 +507,7 @@ paths:
       summary: 帖子详情
       description: |
         获取单个帖子详情，含当前用户点赞状态和是否为作者。
-        - 需要鉴权（未绑定学校也可调用）
+        - 需要 JWT 鉴权（未绑定学校也可调用）
       security: [{BearerToken: []}]
       parameters:
         - $ref: "#/components/parameters/PostID"
@@ -531,7 +544,7 @@ paths:
       summary: 编辑帖子
       description: |
         编辑帖子（仅作者本人可操作）。
-        - 需要鉴权 + 已绑定学校
+        - 需要 JWT 鉴权 + 已绑定学校
         - 至少更新 title / content / images 之一
       security: [{BearerToken: []}]
       parameters:
@@ -572,8 +585,8 @@ paths:
       tags: [帖子]
       summary: 删除帖子
       description: |
-        软删除帖子（仅作者本人可操作）。
-        - 需要鉴权 + 已绑定学校
+        软删除帖子（仅作者或管理员可操作）。
+        - 需要 JWT 鉴权 + 已绑定学校
       security: [{BearerToken: []}]
       parameters:
         - $ref: "#/components/parameters/PostID"
@@ -599,17 +612,18 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   # ==================================================
-  # 评论
+  # 评论 / 二级回复
   # ==================================================
 
   /api/v1/content/posts/{id}/comments:
     get:
       operationId: listComments
       tags: [评论]
-      summary: 评论列表
+      summary: 评论列表（一级评论）
       description: |
-        获取指定帖子的评论列表（游标分页）。
-        - 需要鉴权（未绑定学校也可调用）
+        获取指定帖子的一级评论列表（游标分页，正序）。
+        - 需要 JWT 鉴权（未绑定学校也可调用）
+        - 仅返回 parent_id=0 的一级评论，二级回复请用「回复列表」接口
       security: [{BearerToken: []}]
       parameters:
         - $ref: "#/components/parameters/PostID"
@@ -644,15 +658,67 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /api/v1/content/comments/{id}/replies:
+    get:
+      operationId: listCommentReplies
+      tags: [评论]
+      summary: 回复列表（二级回复）
+      description: |
+        获取指定一级评论下的所有二级回复（游标分页）。
+        - 需要 JWT 鉴权（未绑定学校也可调用）
+        - 父评论必须存在且属于一级评论（parent_id=0），否则返回 400
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/CommentID"
+        - $ref: "#/components/parameters/XTraceID"
+        - name: cursor
+          in: query
+          description: 上一页返回的 next_cursor
+          schema: { type: string }
+        - name: page_size
+          in: query
+          description: 每页条数（默认 20）
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  replies:
+                    type: array
+                    items: { $ref: "#/components/schemas/Comment" }
+                  next_cursor:
+                    type: string
+                    description: 下一页游标
+                  has_more:
+                    type: boolean
+        "400":
+          description: 父评论不存在或非一级评论
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /api/v1/content/comments:
     post:
       operationId: createComment
       tags: [评论]
-      summary: 发表评论
+      summary: 发表评论/回复
       description: |
-        创建一级评论。
-        - 需要鉴权 + 已绑定学校
+        发表一级评论或二级回复，通过 parent_id 区分：
+        - parent_id = 0（默认）：发表一级评论
+        - parent_id > 0：对指定一级评论发表二级回复
+
+        - 需要 JWT 鉴权 + 已绑定学校
         - 评论内容 1-500 字
+        - 服务端会执行 DFA 敏感词扫描
       security: [{BearerToken: []}]
       parameters: [{ $ref: "#/components/parameters/XTraceID" }]
       requestBody:
@@ -660,9 +726,18 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CreateCommentReq" }
-            example:
-              post_id: 1893046982369177600
-              content: "这个帖子很有帮助！"
+            examples:
+              一级评论:
+                summary: 发表一级评论
+                value:
+                  post_id: 1893046982369177600
+                  content: "这个帖子很有帮助！"
+              二级回复:
+                summary: 回复某条一级评论
+                value:
+                  post_id: 1893046982369177600
+                  content: "同问，我也想知道"
+                  parent_id: 1893046982369177601
       responses:
         "200":
           description: 成功
@@ -680,7 +755,7 @@ paths:
                     format: int64
                     description: 创建时间（Unix 秒）
         "400":
-          description: 参数错误
+          description: 参数错误 / 敏感词命中
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -697,7 +772,8 @@ paths:
       summary: 删除评论
       description: |
         软删除评论（仅作者本人可操作）。
-        - 需要鉴权 + 已绑定学校
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 删除一级评论时，其下的二级回复会被级联删除
       security: [{BearerToken: []}]
       parameters:
         - $ref: "#/components/parameters/CommentID"
@@ -733,7 +809,8 @@ paths:
       summary: 点赞帖子
       description: |
         点赞帖子（幂等，重复点赞不增加计数）。
-        - 需要鉴权 + 已绑定学校
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 首次点赞会触发 MQ 事件通知帖子作者
       security: [{BearerToken: []}]
       parameters:
         - $ref: "#/components/parameters/PostID"
@@ -766,7 +843,7 @@ paths:
       summary: 取消点赞
       description: |
         取消帖子点赞（幂等）。
-        - 需要鉴权 + 已绑定学校
+        - 需要 JWT 鉴权 + 已绑定学校
       security: [{BearerToken: []}]
       parameters:
         - $ref: "#/components/parameters/PostID"
@@ -804,9 +881,11 @@ paths:
       summary: 关键词搜索
       description: |
         关键词搜索帖子（代理 Elasticsearch 查询）。
-        - 需要鉴权（未绑定学校也可调用）
-        - 搜索范围：标题（权重 x3）+ 正文
+        - 需要 JWT 鉴权（未绑定学校也可调用）
+        - 搜索范围：标题 + 正文（multi_match best_fields）
+        - school_id 强制作为过滤条件，跨校不可搜
         - 分页方式：传统页码分页（page + page_size）
+        - 注意：ES 未连接时返回「搜索服务暂不可用」
       security: [{BearerToken: []}]
       parameters: [{ $ref: "#/components/parameters/XTraceID" }]
       requestBody:
@@ -851,7 +930,7 @@ paths:
                     format: int64
                     description: ES 查询耗时（毫秒）
         "400":
-          description: keyword 必填
+          description: keyword 必填 / ES 未连接
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
