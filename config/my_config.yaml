@@ -12,6 +12,7 @@ mysql:
   databases:
     user: "campus_user"
     content: "campus_content"
+    message: "campus_message"
 
 redis:
   username: ""
@@ -26,7 +27,7 @@ jwt:
 rabbitmq:
   username: "yun"
   password: "123456"
-  address: "localhost:15672"
+  address: "localhost:5672"
 
 # Elasticsearch 节点地址（用于 Content Service 帖子索引与搜索）
 elasticsearch:
@@ -60,3 +61,7 @@ service:
     name: "content-service"
     address: "127.0.0.1:50002"
     loadBalance: true
+  message:
+    name: "message-service"
+    address: "127.0.0.1:50004"
+    loadBalance: false
