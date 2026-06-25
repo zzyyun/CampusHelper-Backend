@@ -276,6 +276,23 @@ func DeleteOwnedComment(schoolID, commentID, userID int64) (bool, error) {
 	return deleted, err
 }
 
+// GetCommentByID 根据 comment_id 查询单条评论。
+// 使用 SchoolScope 强制 school_id 隔离，避免跨学校越权访问。
+func GetCommentByID(schoolID, commentID int64) (*content_db.PostComment, error) {
+	var comment content_db.PostComment
+	err := mustContentDB().
+		Scopes(db.SchoolScope(schoolID)).
+		Where("id = ?", commentID).
+		First(&comment).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &comment, nil
+}
+
 // ListComments 游标分页查询帖子评论列表。
 func ListComments(schoolID, postID int64, cursor int64, pageSize int) ([]content_db.PostComment, int64, error) {
 	if pageSize <= 0 || pageSize > 50 {

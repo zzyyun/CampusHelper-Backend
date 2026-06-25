@@ -269,6 +269,7 @@ message CreateCommentRequest {
   int64 post_id = 2;
   int64 user_id = 3;
   string content = 4;          // 1-500 字
+  int64 parent_id = 5;         // 父评论ID（0=一级评论，>0=二级回复；仅允许指向一级评论）
 }
 
 message CreateCommentResponse {
