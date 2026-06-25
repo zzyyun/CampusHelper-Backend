@@ -21,10 +21,10 @@ import (
 // type 为 0（POST_TYPE_UNSPECIFIED）时由 gin validator 拦截。
 // 失物招领 / 二手交易的扩展字段以嵌套对象传入；服务端会按 type 校验必填字段。
 type createPostReq struct {
-	Type       int32    `json:"type" binding:"required,min=1,max=3"`
-	Title      string   `json:"title" binding:"required,min=1,max=200"`
-	Content    string   `json:"content" binding:"required,min=1,max=5000"`
-	Images     []string `json:"images"`
+	Type       int32          `json:"type" binding:"required,min=1,max=3"`
+	Title      string         `json:"title" binding:"required,min=1,max=200"`
+	Content    string         `json:"content" binding:"required,min=1,max=5000"`
+	Images     []string       `json:"images"`
 	LostFound  *lostFoundDTO  `json:"lost_found,omitempty"`
 	SecondHand *secondHandDTO `json:"second_hand,omitempty"`
 }
@@ -46,17 +46,18 @@ type secondHandDTO struct {
 
 // updatePostReq 更新帖子请求体；标题/正文/图片任一变化即可，至少传一个字段。
 type updatePostReq struct {
-	Title      string   `json:"title"`
-	Content    string   `json:"content"`
-	Images     []string `json:"images"`
+	Title      string         `json:"title"`
+	Content    string         `json:"content"`
+	Images     []string       `json:"images"`
 	LostFound  *lostFoundDTO  `json:"lost_found,omitempty"`
 	SecondHand *secondHandDTO `json:"second_hand,omitempty"`
 }
 
-// createCommentReq 创建一级评论。
+// createCommentReq 创建评论（支持一级/二级回复）。
 type createCommentReq struct {
-	PostID  int64  `json:"post_id" binding:"required,min=1"`
-	Content string `json:"content" binding:"required,min=1,max=500"`
+	PostID   int64  `json:"post_id" binding:"required,min=1"`
+	Content  string `json:"content" binding:"required,min=1,max=500"`
+	ParentID int64  `json:"parent_id"` // 0=一级评论，>0=二级回复
 }
 
 // searchReq 关键词搜索请求；keyword 必填，page/page_size 有默认值。
@@ -240,7 +241,7 @@ func DeletePost(c *gin.Context) {
 
 // ─── POST /api/v1/content/comments  (JWT + school bound) ─────────────────────
 
-// CreateComment 创建一级评论。
+// CreateComment 创建评论（支持一级评论与二级回复）。
 func CreateComment(c *gin.Context) {
 	var req createCommentReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -257,6 +258,7 @@ func CreateComment(c *gin.Context) {
 		PostId:   req.PostID,
 		UserId:   uid,
 		Content:  req.Content,
+		ParentId: req.ParentID, // 0=一级，>0=二级回复
 	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
@@ -291,6 +293,39 @@ func DeleteComment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
+
+// ─── GET /api/v1/content/comments/:id/replies  (JWT) ──────────────────────────
+
+// ListCommentReplies 查询某条一级评论下的所有二级回复（游标分页）。
+func ListCommentReplies(c *gin.Context) {
+	ctx, sid, _, ok := readCtxWithIDs(c)
+	if !ok {
+		return
+	}
+	parentCommentID, ok := parsePathInt64(c, "id")
+	if !ok {
+		return
+	}
+
+	pagination := &common_pb.CursorPaginationReq{
+		Cursor:   c.Query("cursor"),
+		PageSize: int32(parseQueryInt(c, "page_size", 20)),
+	}
+	resp, err := client.ContentClient.ListCommentReplies(ctx, &content_pb.ListCommentRepliesRequest{
+		SchoolId:        sid,
+		ParentCommentId: parentCommentID,
+		Pagination:      pagination,
+	})
+	if err != nil {
+		middleware.GRPCErrorResponse(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"replies":     resp.Replies,
+		"next_cursor": resp.NextCursor,
+		"has_more":    resp.HasMore,
+	})
 }
 
 // ─── GET /api/v1/content/posts/:id/comments  (JWT) ───────────────────────────
