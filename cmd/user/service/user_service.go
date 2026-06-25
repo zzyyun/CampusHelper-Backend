@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
@@ -342,6 +343,51 @@ func (s *UserServiceServer) UpdateUserInfo(ctx context.Context, req *user_pb.Upd
 	_ = user_database.DelUserCache(ctx, userID)
 
 	return &common_pb.BaseResponse{Code: 0, Message: "更新成功"}, nil
+}
+
+// ─── ListSchools ────────────────────────────────────────────────────────────
+
+// ListSchools 搜索/列出学校。keyword 非空时模糊搜索，否则返回全部。
+func (s *UserServiceServer) ListSchools(ctx context.Context, req *user_pb.ListSchoolsRequest) (*user_pb.ListSchoolsResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.ListSchools")
+	defer span.End()
+
+	pageSize := int(req.GetPageSize())
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 20
+	}
+
+	var schools []model.School
+	var err error
+
+	if keyword := strings.TrimSpace(req.GetKeyword()); keyword != "" {
+		schools, err = user_database.SearchSchools(keyword, pageSize)
+	} else {
+		schools, err = user_database.ListSchools()
+	}
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetAttributes(attribute.Int("schools.count", len(schools)))
+
+	pbSchools := make([]*user_pb.SchoolInfo, 0, len(schools))
+	for i := range schools {
+		pbSchools = append(pbSchools, &user_pb.SchoolInfo{
+			SchoolId: schools[i].ID,
+			Name:     schools[i].Name,
+			Province: schools[i].City,
+		})
+	}
+
+	return &user_pb.ListSchoolsResponse{
+		Schools:  pbSchools,
+		HasMore:  false,
+		NextCursor: "",
+	}, nil
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
