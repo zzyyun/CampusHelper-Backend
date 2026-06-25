@@ -155,9 +155,11 @@ func NewContentEvent(eventType string, postID, schoolID, userID int64, traceID s
 
 // ContentEvent 类型常量
 const (
-	EventContentPublished = "content.published"     // 审核通过 → 触发 ES 同步
+	EventContentPublished = "content.published"     // 审核通过 → 触发 ES 同步 / 通知用户
 	EventContentRejected  = "content.review_result" // 审核拒绝 → 通知用户
-	EventContentTakenDown = "content.taken_down"    // 违规下架 → 删除 ES 文档 + 通知
+	EventContentTakenDown = "content.taken_down"    // 违规下架 → 删除 ES 文档 + 通知用户
+	EventContentLiked     = "content.liked"         // 帖子被点赞 → 通知帖子作者
+	EventContentReplied   = "content.replied"       // 评论被回复 → 通知父评论作者
 )
 
 // 确保 JSON 序列化接口实现

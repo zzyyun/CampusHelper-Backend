@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,11 +30,16 @@ type ContentServiceServer struct {
 // 若未初始化（nil），审核操作仅记录日志不发布消息。
 var mqPublisher *mq.Publisher
 
+// notificationPublisher 通知事件发布者，投递到独立的 notification.events 队列，
+// 供 Message Service 消费。与 mqPublisher（content.events → ES Sync）隔离。
+var notificationPublisher *mq.Publisher
+
 // InitMQ 初始化 RabbitMQ 发布者。
 // addr 格式: amqp://user:pass@host:port/
 func InitMQ(addr string) {
 	mqPublisher = mq.NewPublisher(addr, "content.events")
-	log.Printf("[content-service] MQ Publisher 已初始化（队列: content.events）")
+	notificationPublisher = mq.NewPublisher(addr, "notification.events")
+	log.Printf("[content-service] MQ Publisher 已初始化（队列: content.events + notification.events）")
 }
 
 // ─── 帖子 CRUD ──────────────────────────────────────────────────────────────
@@ -261,7 +267,7 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 		// 首次点赞 → 发布 MQ 事件通知帖子作者
 		post, _ := repo.GetByID(req.SchoolId, req.PostId)
 		if post != nil && post.UserID != req.UserId {
-			publishEvent(ctx, "content.liked", req.PostId, req.SchoolId, req.UserId)
+			publishEvent(ctx, mq.EventContentLiked, req.PostId, req.SchoolId, req.UserId)
 		}
 	}
 
@@ -328,6 +334,7 @@ func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.Create
 	}
 
 	// parent_id 业务校验（二级回复）
+	var parentCommentUserID int64
 	if req.ParentId != 0 {
 		parent, err := repo.GetCommentByID(req.SchoolId, req.ParentId)
 		if err != nil {
@@ -345,6 +352,7 @@ func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.Create
 		if parent.PostID != req.PostId {
 			return nil, fmt.Errorf("%w: 父评论所属帖子与请求不匹配", errInvalidArgument)
 		}
+		parentCommentUserID = parent.UserID // 保存父评论作者 ID，用于后续 content.replied 事件
 	}
 
 	// DFA 敏感词扫描
@@ -370,6 +378,20 @@ func (s *ContentServiceServer) CreateComment(ctx context.Context, req *pb.Create
 
 	if err := repo.CreateComment(comment); err != nil {
 		return nil, fmt.Errorf("create comment: %w", err)
+	}
+
+	// 二级回复 → 发布 content.replied 事件（通知父评论作者）
+	if req.ParentId != 0 {
+		preview := string([]rune(content))
+		if len([]rune(preview)) > 50 {
+			preview = string([]rune(preview)[:50])
+		}
+		replyEvent := mq.NewContentEvent(mq.EventContentReplied, req.PostId, req.SchoolId, req.UserId,
+			traceIDFromContext(ctx))
+		replyEvent.Data["parent_comment_id"] = formatInt64(req.ParentId)
+		replyEvent.Data["parent_comment_user_id"] = formatInt64(parentCommentUserID)
+		replyEvent.Data["content_preview"] = preview
+		publishNotificationEventRaw(replyEvent)
 	}
 
 	return &pb.CreateCommentResponse{
@@ -779,12 +801,31 @@ func (s *ContentServiceServer) RenewPost(ctx context.Context, schoolID, postID, 
 // ─── MQ 辅助函数 ─────────────────────────────────────────────────────────────
 
 // publishEvent 发布简单的 MQ 内容事件。
+// 同时判断是否需要投递到 notification.events（通知类事件双队列投递）。
 func publishEvent(ctx context.Context, eventType string, postID, schoolID, userID int64) {
 	event := mq.NewContentEvent(eventType, postID, schoolID, userID, traceIDFromContext(ctx))
 	publishEventRaw(event)
+
+	// 通知类事件额外投递到 notification.events（供 Message Service 消费）
+	if isNotificationEvent(eventType) {
+		publishNotificationEventRaw(event)
+	}
 }
 
-// publishEventRaw 发布事件（best-effort，失败仅记录日志）。
+// isNotificationEvent 判断事件类型是否需要投递到通知队列。
+func isNotificationEvent(eventType string) bool {
+	switch eventType {
+	case mq.EventContentLiked,
+		mq.EventContentPublished,
+		mq.EventContentRejected,
+		mq.EventContentTakenDown,
+		mq.EventContentReplied:
+		return true
+	}
+	return false
+}
+
+// publishEventRaw 发布事件到 content.events（best-effort，失败仅记录日志）。
 func publishEventRaw(event *mq.ContentEvent) {
 	if mqPublisher == nil {
 		log.Printf("[content-service] MQ 未初始化，跳过事件发布: type=%s post=%d", event.Type, event.PostID)
@@ -794,6 +835,17 @@ func publishEventRaw(event *mq.ContentEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = mqPublisher.Publish(ctx, event) // Publish 内部已有降级日志
+}
+
+// publishNotificationEventRaw 投递事件到 notification.events（best-effort，失败仅记录日志）。
+func publishNotificationEventRaw(event *mq.ContentEvent) {
+	if notificationPublisher == nil {
+		log.Printf("[content-service] 通知 MQ 未初始化，跳过通知事件发布: type=%s post=%d", event.Type, event.PostID)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = notificationPublisher.Publish(ctx, event)
 }
 
 // ─── 辅助函数 ───────────────────────────────────────────────────────────────
@@ -945,6 +997,13 @@ func buildSearchQuery(schoolID int64, keyword string, postType pb.PostType, cate
 		`{"from":%d,"size":%d,"query":{"bool":{"must":[{"multi_match":{"query":%q,"fields":["title","content"],"type":"best_fields"}}],"filter":[%s]}},"sort":%s}`,
 		from, size, keyword, strings.Join(filters, ","), sortClause,
 	)
+}
+
+// ─── 工具函数 ─────────────────────────────────────────────────────────────────
+
+// formatInt64 将 int64 格式化为字符串，用于 MQ 事件 Data map（map[string]string）。
+func formatInt64(v int64) string {
+	return strconv.FormatInt(v, 10)
 }
 
 // ─── 错误常量（Phase 1 简化处理，Phase 2 接入 pkg/errcode） ────────────────
