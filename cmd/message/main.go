@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go_projects/praProject1/cmd/message/model"
+	message_repo "go_projects/praProject1/cmd/message/repo"
 	message_service "go_projects/praProject1/cmd/message/service"
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
@@ -80,7 +82,10 @@ func main() {
 		config.Conf.RabbitMQ.Address)
 	consumer := startMQConsumer(mqAddr)
 
-	// 7. 启动 gRPC（goroutine）
+	// 7. 启动通知自动清理 goroutine
+	go startCleanupTask()
+
+	// 8. 启动 gRPC（goroutine）
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Printf("[message-service] serve error: %v", err)
@@ -120,4 +125,29 @@ func startMQConsumer(mqAddr string) *mq.Consumer {
 	log.Println("[message-service] MQ Consumer 已启动（队列: notification.events）")
 
 	return consumer
+}
+
+// startCleanupTask 启动后台任务，每 24 小时清理一次 30 天前的已软删除通知。
+func startCleanupTask() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// 启动时立即清理一次
+	doCleanup()
+
+	for range ticker.C {
+		doCleanup()
+	}
+}
+
+func doCleanup() {
+	before := time.Now().Add(-30 * 24 * time.Hour)
+	count, err := message_repo.CleanupBefore(before)
+	if err != nil {
+		log.Printf("[message-service] 清理通知失败: %v", err)
+		return
+	}
+	if count > 0 {
+		log.Printf("[message-service] 已清理 %d 条 30 天前的通知", count)
+	}
 }

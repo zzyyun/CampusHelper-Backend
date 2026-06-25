@@ -22,7 +22,40 @@ import (
 // 下期接入 User Service（获取昵称）和 Content Service（获取帖子标题）后，
 // 标题将包含真实的用户名和帖子名快照。
 
-// handleLiked 处理 content.liked 事件：有人点赞帖子 → 通知帖子作者。
+// ─── 标题格式化（导出，供测试） ─────────────────────────────────────────────
+
+// FormatReviewTitle 格式化审核结果通知标题。
+// eventType: content.published 或 content.review_result
+// reason: 拒绝原因（review_result 时使用）
+func FormatReviewTitle(eventType string, reason string) (title string, notifType string) {
+	if eventType == mq.EventContentRejected {
+		if reason == "" {
+			reason = "未提供原因"
+		}
+		return fmt.Sprintf("你的帖子审核未通过，原因: %s", reason), string(model.NotifReviewResult)
+	}
+	return "你的帖子已通过审核", string(model.NotifPublished)
+}
+
+// FormatTakenDownTitle 格式化违规下架通知标题。
+func FormatTakenDownTitle(reason string) string {
+	if reason == "" {
+		reason = "未提供原因"
+	}
+	return fmt.Sprintf("你的帖子因违规已下架，原因: %s", reason)
+}
+
+// FormatRepliedTitle 格式化评论回复通知标题。
+func FormatRepliedTitle(contentPreview string) string {
+	if contentPreview == "" {
+		contentPreview = "回复了你的评论"
+	}
+	return fmt.Sprintf("有人回复了你的评论: %s", contentPreview)
+}
+
+// ─── 事件处理器 ─────────────────────────────────────────────────────────────
+
+// HandleLiked 处理 content.liked 事件：有人点赞帖子 → 通知帖子作者。
 func HandleLiked(ctx context.Context, event *mq.ContentEvent) error {
 	// event.UserID = 点赞者
 	// event.PostID = 被点赞的帖子
@@ -33,23 +66,10 @@ func HandleLiked(ctx context.Context, event *mq.ContentEvent) error {
 	return nil // Ack，不阻塞消费
 }
 
-// handleReviewResult 处理 content.published / content.review_result 事件。
+// HandleReviewResult 处理 content.published / content.review_result 事件。
 // 审核结果通知：审核通过或拒绝 → 通知发帖人。
 func HandleReviewResult(ctx context.Context, event *mq.ContentEvent) error {
-	// event.UserID = 帖子作者（发帖人）
-	// event.Type 区分通过/拒绝
-	// event.Data["reason"] 审核拒绝原因（仅 review_result 有）
-
-	title := fmt.Sprintf("你的帖子已通过审核")
-	notifType := string(model.NotifPublished)
-	if event.Type == mq.EventContentRejected {
-		reason := event.Data["reason"]
-		if reason == "" {
-			reason = "未提供原因"
-		}
-		title = fmt.Sprintf("你的帖子审核未通过，原因: %s", reason)
-		notifType = string(model.NotifReviewResult)
-	}
+	title, notifType := FormatReviewTitle(event.Type, event.Data["reason"])
 
 	_, err := repo.Create(
 		event.UserID,     // 接收者 = 帖子作者
@@ -67,13 +87,9 @@ func HandleReviewResult(ctx context.Context, event *mq.ContentEvent) error {
 	return nil
 }
 
-// handleTakenDown 处理 content.taken_down 事件：帖子违规下架 → 通知发帖人。
+// HandleTakenDown 处理 content.taken_down 事件：帖子违规下架 → 通知发帖人。
 func HandleTakenDown(ctx context.Context, event *mq.ContentEvent) error {
-	reason := event.Data["reason"]
-	if reason == "" {
-		reason = "未提供原因"
-	}
-	title := fmt.Sprintf("你的帖子因违规已下架，原因: %s", reason)
+	title := FormatTakenDownTitle(event.Data["reason"])
 
 	_, err := repo.Create(
 		event.UserID,
@@ -91,25 +107,16 @@ func HandleTakenDown(ctx context.Context, event *mq.ContentEvent) error {
 	return nil
 }
 
-// handleReplied 处理 content.replied 事件：有人回复评论 → 通知父评论作者。
+// HandleReplied 处理 content.replied 事件：有人回复评论 → 通知父评论作者。
 func HandleReplied(ctx context.Context, event *mq.ContentEvent) error {
-	// event.UserID = 回复者
-	// event.Data["parent_comment_user_id"] = 父评论作者（通知接收者）
-	// event.Data["content_preview"] = 回复内容预览
-
 	parentUserIDStr := event.Data["parent_comment_user_id"]
-	contentPreview := event.Data["content_preview"]
-	if contentPreview == "" {
-		contentPreview = "回复了你的评论"
-	}
-
 	var parentUserID int64
 	if _, err := fmt.Sscanf(parentUserIDStr, "%d", &parentUserID); err != nil || parentUserID == 0 {
 		log.Printf("[message-service] replied 事件缺少 parent_comment_user_id, 跳过")
 		return nil
 	}
 
-	title := fmt.Sprintf("有人回复了你的评论: %s", contentPreview)
+	title := FormatRepliedTitle(event.Data["content_preview"])
 
 	_, err := repo.Create(
 		parentUserID,
