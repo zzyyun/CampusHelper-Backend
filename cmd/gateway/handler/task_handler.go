@@ -54,12 +54,14 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := authCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
 	resp, err := client.TaskClient.CreateTask(ctx, &task_pb.CreateTaskRequest{
+		SchoolId:    sid,
+		UserId:      uid,
 		TaskType:    task_pb.TaskType(req.TaskType),
 		Title:       req.Title,
 		Description: req.Description,
@@ -85,7 +87,7 @@ func ListTasks(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, _, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -96,9 +98,10 @@ func ListTasks(c *gin.Context) {
 	}
 
 	resp, err := client.TaskClient.ListTasks(ctx, &task_pb.ListTasksRequest{
-		Cursor:   req.Cursor,
-		PageSize: pageSize,
-		TaskType: task_pb.TaskType(req.TaskType),
+		SchoolId:  sid,
+		Cursor:    req.Cursor,
+		PageSize:  pageSize,
+		TaskType:  task_pb.TaskType(req.TaskType),
 	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
@@ -117,12 +120,16 @@ func GetTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.TaskClient.GetTask(ctx, &task_pb.GetTaskRequest{TaskId: id})
+	resp, err := client.TaskClient.GetTask(ctx, &task_pb.GetTaskRequest{
+		SchoolId: sid,
+		TaskId:   id,
+		UserId:   uid, // 用于判断是否展示联系方式
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
@@ -146,13 +153,15 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := authCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
 	resp, err := client.TaskClient.UpdateTask(ctx, &task_pb.UpdateTaskRequest{
+		SchoolId:    sid,
 		TaskId:      id,
+		UserId:      uid,
 		Title:       req.Title,
 		Description: req.Description,
 		Location:    req.Location,
@@ -177,12 +186,16 @@ func DeleteTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := authCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.TaskClient.DeleteTask(ctx, &task_pb.DeleteTaskRequest{TaskId: id})
+	resp, err := client.TaskClient.DeleteTask(ctx, &task_pb.DeleteTaskRequest{
+		SchoolId: sid,
+		TaskId:   id,
+		UserId:   uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
@@ -214,15 +227,17 @@ func ClaimTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := authCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
 	resp, err := client.TaskClient.ClaimTask(ctx, &task_pb.ClaimTaskRequest{
-		TaskId:  id,
-		Contact: req.Contact,
-		Message: req.Message,
+		SchoolId: sid,
+		TaskId:   id,
+		UserId:   uid,
+		Contact:  req.Contact,
+		Message:  req.Message,
 	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
@@ -249,12 +264,16 @@ func CompleteTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := authCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.TaskClient.CompleteTask(ctx, &task_pb.CompleteTaskRequest{TaskId: id})
+	resp, err := client.TaskClient.CompleteTask(ctx, &task_pb.CompleteTaskRequest{
+		SchoolId: sid,
+		TaskId:   id,
+		UserId:   uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
@@ -280,12 +299,16 @@ func CancelTask(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := authCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.TaskClient.CancelTask(ctx, &task_pb.CancelTaskRequest{TaskId: id})
+	resp, err := client.TaskClient.CancelTask(ctx, &task_pb.CancelTaskRequest{
+		SchoolId: sid,
+		TaskId:   id,
+		UserId:   uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
