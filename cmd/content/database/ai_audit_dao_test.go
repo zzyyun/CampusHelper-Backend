@@ -13,7 +13,7 @@ import (
 
 func TestCreateAIAuditLog_NilLog(t *testing.T) {
 	// 模拟：传入 nil 时应返回 error
-	err := CreateAIAuditLog(nil, nil)
+	err := CreateAIAuditLog(nil)
 	if err == nil {
 		t.Error("expected error for nil log")
 	}
@@ -27,7 +27,7 @@ func TestCreateAIAuditLog_InvalidPostID(t *testing.T) {
 		AIResult:     model.AIResultPass,
 		AIConfidence: 0.95,
 	}
-	err := CreateAIAuditLog(nil, log)
+	err := CreateAIAuditLog(log)
 	if err == nil {
 		t.Error("expected error for invalid post_id")
 	}
@@ -37,7 +37,7 @@ func TestCreateAIAuditLog_InvalidPostID(t *testing.T) {
 }
 
 func TestListAIAuditLogsByPostID_InvalidPostID(t *testing.T) {
-	logs, err := ListAIAuditLogsByPostID(nil, 0, 10)
+	logs, err := ListAIAuditLogsByPostID(0, 10)
 	if err == nil {
 		t.Error("expected error for invalid post_id")
 	}

@@ -2,12 +2,24 @@ package database
 
 import (
 	"errors"
+	"log"
 	"time"
 
 	"go_projects/praProject1/cmd/content/model"
+	"go_projects/praProject1/pkg/db"
 
 	"gorm.io/gorm"
 )
+
+// mustContentDB 返回 content 服务的 *gorm.DB。
+// main.go 必须先执行 db.InitContentDB()，否则本函数会记录 fatal。
+func mustContentDB() *gorm.DB {
+	d, err := db.GetContentDB()
+	if err != nil {
+		log.Fatalf("[content-db-dao] 未初始化 content db: %v", err)
+	}
+	return d
+}
 
 // ─── ai_audit_logs 表 CRUD ─────────────────────────────────────────────────
 
@@ -20,7 +32,7 @@ import (
 //   - error: 数据库错误时返回
 //
 // 错误处理：调用方应吞掉 error 并记录 WARN 日志（PRD § Feature 5：表写入失败不阻塞发帖）
-func CreateAIAuditLog(db *gorm.DB, log *model.AIAuditLog) error {
+func CreateAIAuditLog(log *model.AIAuditLog) error {
 	if log == nil {
 		return errors.New("log is nil")
 	}
@@ -30,7 +42,7 @@ func CreateAIAuditLog(db *gorm.DB, log *model.AIAuditLog) error {
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
 	}
-	return db.Create(log).Error
+	return mustContentDB().Create(log).Error
 }
 
 // ListAIAuditLogsByPostID 查询某帖子的 AI 审核日志（按时间倒序）
@@ -38,7 +50,7 @@ func CreateAIAuditLog(db *gorm.DB, log *model.AIAuditLog) error {
 // 参数：
 //   - postID: 帖子 ID
 //   - limit: 返回条数限制（最大 100）
-func ListAIAuditLogsByPostID(db *gorm.DB, postID int64, limit int) ([]model.AIAuditLog, error) {
+func ListAIAuditLogsByPostID(postID int64, limit int) ([]model.AIAuditLog, error) {
 	if postID <= 0 {
 		return nil, errors.New("post_id must be > 0")
 	}
@@ -46,7 +58,7 @@ func ListAIAuditLogsByPostID(db *gorm.DB, postID int64, limit int) ([]model.AIAu
 		limit = 20
 	}
 	var logs []model.AIAuditLog
-	err := db.Where("post_id = ?", postID).
+	err := mustContentDB().Where("post_id = ?", postID).
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&logs).Error
@@ -54,9 +66,9 @@ func ListAIAuditLogsByPostID(db *gorm.DB, postID int64, limit int) ([]model.AIAu
 }
 
 // CountAIAuditLogsByStatus 统计指定状态的 AI 审计日志数量（用于监控降级率）
-func CountAIAuditLogsByStatus(db *gorm.DB, status model.AIStatus, since time.Time) (int64, error) {
+func CountAIAuditLogsByStatus(status model.AIStatus, since time.Time) (int64, error) {
 	var count int64
-	err := db.Model(&model.AIAuditLog{}).
+	err := mustContentDB().Model(&model.AIAuditLog{}).
 		Where("ai_status = ? AND created_at >= ?", status, since).
 		Count(&count).Error
 	return count, err
@@ -70,8 +82,8 @@ func CountAIAuditLogsByStatus(db *gorm.DB, status model.AIStatus, since time.Tim
 // 返回：
 //   - int64: 清理的记录数
 //   - error: 数据库错误
-func CleanupOldAIAuditLogs(db *gorm.DB, before time.Time) (int64, error) {
-	result := db.Where("created_at < ?", before).Delete(&model.AIAuditLog{})
+func CleanupOldAIAuditLogs(before time.Time) (int64, error) {
+	result := mustContentDB().Where("created_at < ?", before).Delete(&model.AIAuditLog{})
 	return result.RowsAffected, result.Error
 }
 
@@ -86,9 +98,9 @@ type AIStatusDistribution struct {
 }
 
 // GetAIStatusDistribution 查询指定时间范围内的 AI 状态分布
-func GetAIStatusDistribution(db *gorm.DB, since time.Time) (*AIStatusDistribution, error) {
+func GetAIStatusDistribution(since time.Time) (*AIStatusDistribution, error) {
 	dist := &AIStatusDistribution{}
-	rows, err := db.Model(&model.AIAuditLog{}).
+	rows, err := mustContentDB().Model(&model.AIAuditLog{}).
 		Select("ai_status, COUNT(*) as count").
 		Where("created_at >= ?", since).
 		Group("ai_status").
