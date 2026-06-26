@@ -66,6 +66,9 @@ func main() {
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
+	// 启动审计日志清理任务（90 天定期清理）
+	go service.StartAuditCleanupTask()
+
 	user_pb.RegisterUserServiceServer(grpcServer, &service.UserServiceServer{})
 
 	// 注册到 etcd 服务发现（必须在 net.Listen 成功后，确保只通告已绑定的地址）

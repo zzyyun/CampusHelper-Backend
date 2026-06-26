@@ -21,7 +21,6 @@ import (
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
 	pkgjwt "go_projects/praProject1/pkg/jwt"
-	"go_projects/praProject1/pkg/snowflake"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -661,20 +660,16 @@ func userSchoolFromCtx(ctx context.Context) int64 {
 
 // recordAuditLog 记录管理员操作审计日志。写入失败不阻塞主流程。
 func recordAuditLog(ctx context.Context, targetID, operatorSchool int64, action model.AuditAction, detail string) error {
-	// 审计日志写入延用 user_database 的 DB 连接
-	d, err := db.GetUserDB()
-	if err != nil {
-		log.Printf("[user-service] 审计日志写入失败(DB未初始化): %v", err)
+	operatorID := userIDFromCtx(ctx)
+	if operatorID == 0 {
+		log.Printf("[user-service] 审计日志跳过：无法获取操作人ID")
+		return nil
+	}
+	if err := user_database.CreateAuditLog(operatorID, targetID, action, detail); err != nil {
+		log.Printf("[user-service] 审计日志写入失败: %v", err)
 		return err
 	}
-	logEntry := &model.AdminAuditLog{
-		ID:         snowflake.GenerateID(),
-		OperatorID: userIDFromCtx(ctx),
-		TargetID:   targetID,
-		Action:     action,
-		Detail:     detail,
-	}
-	return d.Create(logEntry).Error
+	return nil
 }
 
 // getSchoolWithCache fetches a school, using Redis as L1 cache.
@@ -688,6 +683,75 @@ func getSchoolWithCache(ctx context.Context, id int64) (*model.School, error) {
 	}
 	_ = user_database.SetSchoolCache(ctx, s)
 	return s, nil
+}
+
+// SetUserRole 设置用户角色（仅 super_admin 可操作）。
+// 允许在 student ↔ admin 之间切换，禁止设为 super_admin。
+func (s *UserServiceServer) SetUserRole(ctx context.Context, req *user_pb.SetUserRoleRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.SetUserRole")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorID := userIDFromCtx(ctx)
+	targetID := req.GetTargetUserId()
+	targetRole := model.Role(req.GetRole())
+
+	span.SetAttributes(
+		attribute.Int64("role.target_user", targetID),
+		attribute.Int64("role.new_role", int64(targetRole)),
+	)
+
+	// 1. 仅 super_admin
+	if operatorRole != int8(model.RoleSuperAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅超级管理员可设置角色")
+	}
+
+	// 2. 禁止设置 super_admin 角色
+	if targetRole == model.RoleSuperAdmin {
+		return nil, status.Error(codes.InvalidArgument, "禁止通过接口设置 super_admin 角色")
+	}
+
+	// 3. 允许的切换范围
+	if targetRole != model.RoleStudent && targetRole != model.RoleAdmin {
+		return nil, status.Error(codes.InvalidArgument, "角色仅支持 student/admin")
+	}
+
+	// 4. 不能修改自己
+	if targetID == operatorID {
+		return nil, status.Error(codes.InvalidArgument, "不能修改自己的角色")
+	}
+
+	// 5. 获取目标用户
+	target, err := user_database.GetByID(targetID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "用户不存在")
+	}
+
+	oldRole := target.Role.String()
+	target.Role = targetRole
+	target.UpdatedAt = time.Now()
+
+	// 6. 更新角色（直接用 GORM Update，避免全量覆盖）
+	d, dbErr := db.GetUserDB()
+	if dbErr != nil {
+		return nil, status.Error(codes.Internal, "数据库连接失败")
+	}
+	if err = d.Model(target).Updates(map[string]interface{}{
+		"role":       targetRole,
+		"updated_at": target.UpdatedAt,
+	}).Error; err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// 7. 清除缓存
+	_ = user_database.DelUserCache(ctx, targetID)
+	_ = recordAuditLog(ctx, targetID, 0, model.AuditActionSetRole,
+		fmt.Sprintf(`{"old_role":"%s","new_role":"%s"}`, oldRole, targetRole.String()))
+
+	return &common_pb.BaseResponse{Code: 0, Message: "角色已更新"}, nil
 }
 
 // ─── 游标分页编码 ──────────────────────────────────────────────────────────
