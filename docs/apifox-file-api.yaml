@@ -1,0 +1,275 @@
+openapi: 3.0.3
+info:
+  title: CampusHelper - 文件服务 API
+  description: |
+    校园互助平台文件存储服务 HTTP 接口文档（经 Gateway 代理）。
+
+    **Base URL**: `http://localhost:50000`
+    **鉴权方式**: 所有接口均需 `Authorization: Bearer <access_token>`（通过 `/api/v1/user/login` 获取）
+    **链路追踪**: 请求头 `X-Trace-ID`（可选）→ 响应头 `X-Trace-ID`
+
+    **写接口鉴权要求**: JWT + 已绑定学校（删除文件需绑定学校）
+    **读接口鉴权要求**: 仅 JWT（查询文件元数据不强绑学校）
+
+    **限制**:
+    - 单文件上限 **5MB**
+    - 上传使用 `multipart/form-data`（字段名 `file`）
+    - 文件类别（category）：`avatar` / `post` / `task` / `other`
+
+    **统一错误响应格式**:
+    ```json
+    { "code": 40001, "message": "缺少文件字段 file", "trace_id": "abc123..." }
+    ```
+
+    **错误码分段**: `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
+  version: 1.0.0
+  contact:
+    name: CampusHelper Team
+
+servers:
+  - url: http://localhost:50000
+    description: 本地开发环境
+
+tags:
+  - name: 文件
+    description: 文件上传 / 元数据查询 / 删除
+
+components:
+  securitySchemes:
+    BearerToken:
+      type: http
+      scheme: bearer
+      description: Access Token（JWT），通过 POST /api/v1/user/login 获取
+
+  parameters:
+    XTraceID:
+      name: X-Trace-ID
+      in: header
+      required: false
+      description: 自定义追踪 ID（32 字符 hex），缺失时自动生成
+      schema:
+        type: string
+        example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    FileID:
+      name: id
+      in: path
+      required: true
+      description: 文件 ID
+      schema:
+        type: integer
+        format: int64
+        example: 1893046982369177600
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: integer
+          description: 业务错误码（0=成功）
+          example: 40001
+        message:
+          type: string
+          description: 错误描述
+          example: "缺少文件字段 file"
+        trace_id:
+          type: string
+          description: 链路追踪 ID
+          example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    UploadResponse:
+      type: object
+      description: 上传成功响应
+      properties:
+        file_id:
+          type: integer
+          format: int64
+          description: 文件 ID
+          example: 1893046982369177600
+        url:
+          type: string
+          description: 文件可访问 URL（CDN）
+          example: "https://cdn.example.com/post/1893046982369177600.jpg"
+        size_bytes:
+          type: integer
+          format: int64
+          description: 文件大小（字节）
+          example: 102400
+        content_type:
+          type: string
+          description: MIME 类型
+          example: "image/jpeg"
+
+    FileInfo:
+      type: object
+      description: 文件元数据
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1893046982369177600
+        school_id:
+          type: integer
+          format: int64
+          example: 1
+        uploader_id:
+          type: integer
+          format: int64
+          description: 上传者 ID
+          example: 100001
+        category:
+          type: string
+          description: "文件类别 (avatar / post / task / other)"
+          enum: [avatar, post, task, other]
+          example: "post"
+        url:
+          type: string
+          example: "https://cdn.example.com/post/1893046982369177600.jpg"
+        content_type:
+          type: string
+          example: "image/jpeg"
+        size_bytes:
+          type: integer
+          format: int64
+          example: 102400
+        sha256:
+          type: string
+          description: 文件 SHA256 指纹
+          example: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        created_at:
+          type: integer
+          format: int64
+          description: 上传时间（Unix 秒）
+          example: 1719200000
+
+paths:
+
+  # ==================================================
+  # 文件上传
+  # ==================================================
+
+  /api/v1/files/upload:
+    post:
+      operationId: uploadFile
+      tags: [文件]
+      summary: 上传文件
+      description: |
+        上传单个文件（multipart/form-data），由 Gateway 转发到 File Service。
+        - 需要 JWT 鉴权（不限学校绑定）
+        - 单文件上限 5MB
+        - 文件字段名为 `file`，类别字段为 `category`
+        - 用于头像、帖子图片、任务图片等场景
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/XTraceID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 文件二进制（字段名固定为 file）
+                category:
+                  type: string
+                  description: "文件类别 (默认 other)"
+                  enum: [avatar, post, task, other]
+                  default: other
+                  example: "post"
+      responses:
+        "200":
+          description: 上传成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadResponse" }
+              example:
+                file_id: 1893046982369177600
+                url: "https://cdn.example.com/post/1893046982369177600.jpg"
+                size_bytes: 102400
+                content_type: "image/jpeg"
+        "400":
+          description: 缺少文件字段 / 文件过大 / 读取失败
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                code: 40001
+                message: "缺少文件字段 file"
+                trace_id: "abc123..."
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 文件元数据查询 / 删除
+  # ==================================================
+
+  /api/v1/files/{id}:
+    get:
+      operationId: getFile
+      tags: [文件]
+      summary: 查询文件元数据
+      description: |
+        获取文件元数据（仅上传者本人可查询）。
+        - 需要 JWT 鉴权（不限学校绑定）
+        - 注意：本接口只返回元数据，文件本身通过 url 字段访问 CDN
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/FileID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileInfo" }
+        "403":
+          description: 非上传者本人
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: 文件不存在
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    delete:
+      operationId: deleteFile
+      tags: [文件]
+      summary: 删除文件
+      description: |
+        软删除文件（仅上传者本人可操作）。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 注意：CDN 上的实际文件由 File Service 异步清理
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/FileID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "ok" }
+        "403":
+          description: 未绑定学校 / 非上传者本人
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: 文件不存在
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }

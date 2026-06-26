@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,7 +18,9 @@ import (
 	user_database "go_projects/praProject1/cmd/user/database"
 	"go_projects/praProject1/cmd/user/model"
 	"go_projects/praProject1/config"
+	"go_projects/praProject1/pkg/db"
 	pkgjwt "go_projects/praProject1/pkg/jwt"
+	"go_projects/praProject1/pkg/snowflake"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -109,6 +112,12 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 		}
 	}
 
+	// 3a. 封禁用户拦截（登录入口）
+	if u.Status == model.StatusBanned {
+		span.SetAttributes(attribute.Bool("user.banned", true))
+		return nil, status.Error(codes.PermissionDenied, "账号已被封禁")
+	}
+
 	// 4. 更新 Redis 缓存
 	_ = user_database.SetUserCache(ctx, u)
 
@@ -173,6 +182,12 @@ func (s *UserServiceServer) RefreshToken(ctx context.Context, req *user_pb.Refre
 	if err != nil {
 		span.RecordError(err)
 		return nil, status.Error(codes.NotFound, "user not found")
+	}
+
+	// 封禁用户拦截
+	if u.Status == model.StatusBanned {
+		span.SetAttributes(attribute.Bool("user.banned", true))
+		return nil, status.Error(codes.PermissionDenied, "账号已被封禁")
 	}
 
 	jwtCfg := config.Conf.Jwt
@@ -390,6 +405,106 @@ func (s *UserServiceServer) ListSchools(ctx context.Context, req *user_pb.ListSc
 	}, nil
 }
 
+// ─── v2.0: 管理员接口 ─────────────────────────────────────────────────────
+
+// BanUser 封禁用户。
+// admin 只能封禁本校学生；super_admin 可跨校封禁任意用户。
+func (s *UserServiceServer) BanUser(ctx context.Context, req *user_pb.BanUserRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.BanUser")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+	targetID := req.GetUserId()
+	reason := req.GetReason()
+
+	span.SetAttributes(
+		attribute.Int64("ban.target", targetID),
+		attribute.Int64("ban.operator_role", int64(operatorRole)),
+		attribute.String("ban.reason", reason),
+	)
+
+	// 1. 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可封禁用户")
+	}
+
+	// 2. 获取目标用户
+	target, err := user_database.GetByID(targetID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "用户不存在")
+	}
+
+	// 3. admin 只能封禁本校学生，不能封禁其他 admin/super_admin
+	if operatorRole == int8(model.RoleAdmin) {
+		if target.SchoolID != int64(operatorSchool) {
+			return nil, status.Error(codes.PermissionDenied, "仅可操作本校用户")
+		}
+		if target.Role != model.RoleStudent {
+			return nil, status.Error(codes.PermissionDenied, "无权封禁管理员")
+		}
+	}
+
+	// 4. 修改状态
+	if err = user_database.SetUserStatus(targetID, model.StatusBanned); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// 5. 清除缓存
+	_ = user_database.DelUserCache(ctx, targetID)
+	_ = recordAuditLog(ctx, targetID, operatorSchool, model.AuditActionBanUser, reason)
+
+	return &common_pb.BaseResponse{Code: 0, Message: "已封禁"}, nil
+}
+
+// UnbanUser 解封用户。权限规则同 BanUser。
+func (s *UserServiceServer) UnbanUser(ctx context.Context, req *user_pb.UnbanUserRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.UnbanUser")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+	targetID := req.GetUserId()
+
+	// 1. 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可解封用户")
+	}
+
+	// 2. 获取目标用户
+	target, err := user_database.GetByID(targetID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "用户不存在")
+	}
+
+	// 3. admin 仅可操作本校
+	if operatorRole == int8(model.RoleAdmin) {
+		if target.SchoolID != int64(operatorSchool) {
+			return nil, status.Error(codes.PermissionDenied, "仅可操作本校用户")
+		}
+		if target.Role != model.RoleStudent {
+			return nil, status.Error(codes.PermissionDenied, "无权操作管理员")
+		}
+	}
+
+	// 4. 修改状态
+	if err = user_database.SetUserStatus(targetID, model.StatusNormal); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// 5. 清除缓存
+	_ = user_database.DelUserCache(ctx, targetID)
+	_ = recordAuditLog(ctx, targetID, operatorSchool, model.AuditActionUnbanUser, "")
+
+	return &common_pb.BaseResponse{Code: 0, Message: "已解封"}, nil
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 // extractTraceFromMeta extracts W3C TraceContext from gRPC incoming metadata.
@@ -439,6 +554,60 @@ func userIDFromCtx(ctx context.Context) int64 {
 	}
 
 	return id
+}
+
+// userRoleFromCtx 从 gRPC metadata 读取操作人的角色（由 Gateway 注入）。
+// 返回 0 表示无法获取（当作最低权限处理）。
+func userRoleFromCtx(ctx context.Context) int8 {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return 0
+	}
+	vals := md.Get("user-role")
+	if len(vals) == 0 {
+		return 0
+	}
+	role, err := strconv.ParseInt(vals[0], 10, 8)
+	if err != nil {
+		return 0
+	}
+	return int8(role)
+}
+
+// userSchoolFromCtx 从 gRPC metadata 读取操作人的学校（由 Gateway 注入）。
+// 返回 0 表示未绑定学校。
+func userSchoolFromCtx(ctx context.Context) int64 {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return 0
+	}
+	vals := md.Get("school-id")
+	if len(vals) == 0 {
+		return 0
+	}
+	schoolID, err := strconv.ParseInt(vals[0], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return schoolID
+}
+
+// recordAuditLog 记录管理员操作审计日志。写入失败不阻塞主流程。
+func recordAuditLog(ctx context.Context, targetID, operatorSchool int64, action model.AuditAction, detail string) error {
+	// 审计日志写入延用 user_database 的 DB 连接
+	d, err := db.GetUserDB()
+	if err != nil {
+		log.Printf("[user-service] 审计日志写入失败(DB未初始化): %v", err)
+		return err
+	}
+	logEntry := &model.AdminAuditLog{
+		ID:         snowflake.GenerateID(),
+		OperatorID: userIDFromCtx(ctx),
+		TargetID:   targetID,
+		Action:     action,
+		Detail:     detail,
+	}
+	return d.Create(logEntry).Error
 }
 
 // getSchoolWithCache fetches a school, using Redis as L1 cache.
