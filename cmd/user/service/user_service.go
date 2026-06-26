@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +19,7 @@ import (
 	user_database "go_projects/praProject1/cmd/user/database"
 	"go_projects/praProject1/cmd/user/model"
 	"go_projects/praProject1/config"
+	"go_projects/praProject1/pkg/db"
 	pkgjwt "go_projects/praProject1/pkg/jwt"
 
 	"go.opentelemetry.io/otel"
@@ -109,6 +112,12 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 		}
 	}
 
+	// 3a. 封禁用户拦截（登录入口）
+	if u.Status == model.StatusBanned {
+		span.SetAttributes(attribute.Bool("user.banned", true))
+		return nil, status.Error(codes.PermissionDenied, "账号已被封禁")
+	}
+
 	// 4. 更新 Redis 缓存
 	_ = user_database.SetUserCache(ctx, u)
 
@@ -173,6 +182,12 @@ func (s *UserServiceServer) RefreshToken(ctx context.Context, req *user_pb.Refre
 	if err != nil {
 		span.RecordError(err)
 		return nil, status.Error(codes.NotFound, "user not found")
+	}
+
+	// 封禁用户拦截
+	if u.Status == model.StatusBanned {
+		span.SetAttributes(attribute.Bool("user.banned", true))
+		return nil, status.Error(codes.PermissionDenied, "账号已被封禁")
 	}
 
 	jwtCfg := config.Conf.Jwt
@@ -390,6 +405,172 @@ func (s *UserServiceServer) ListSchools(ctx context.Context, req *user_pb.ListSc
 	}, nil
 }
 
+// ─── v2.0: 管理员接口 ─────────────────────────────────────────────────────
+
+// BanUser 封禁用户。
+// admin 只能封禁本校学生；super_admin 可跨校封禁任意用户。
+func (s *UserServiceServer) BanUser(ctx context.Context, req *user_pb.BanUserRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.BanUser")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+	targetID := req.GetUserId()
+	reason := req.GetReason()
+
+	span.SetAttributes(
+		attribute.Int64("ban.target", targetID),
+		attribute.Int64("ban.operator_role", int64(operatorRole)),
+		attribute.String("ban.reason", reason),
+	)
+
+	// 1. 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可封禁用户")
+	}
+
+	// 2. 获取目标用户
+	target, err := user_database.GetByID(targetID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "用户不存在")
+	}
+
+	// 3. admin 只能封禁本校学生，不能封禁其他 admin/super_admin
+	if operatorRole == int8(model.RoleAdmin) {
+		if target.SchoolID != int64(operatorSchool) {
+			return nil, status.Error(codes.PermissionDenied, "仅可操作本校用户")
+		}
+		if target.Role != model.RoleStudent {
+			return nil, status.Error(codes.PermissionDenied, "无权封禁管理员")
+		}
+	}
+
+	// 4. 修改状态
+	if err = user_database.SetUserStatus(targetID, model.StatusBanned); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// 5. 清除缓存
+	_ = user_database.DelUserCache(ctx, targetID)
+	_ = recordAuditLog(ctx, targetID, operatorSchool, model.AuditActionBanUser, reason)
+
+	return &common_pb.BaseResponse{Code: 0, Message: "已封禁"}, nil
+}
+
+// UnbanUser 解封用户。权限规则同 BanUser。
+func (s *UserServiceServer) UnbanUser(ctx context.Context, req *user_pb.UnbanUserRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.UnbanUser")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+	targetID := req.GetUserId()
+
+	// 1. 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可解封用户")
+	}
+
+	// 2. 获取目标用户
+	target, err := user_database.GetByID(targetID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "用户不存在")
+	}
+
+	// 3. admin 仅可操作本校
+	if operatorRole == int8(model.RoleAdmin) {
+		if target.SchoolID != int64(operatorSchool) {
+			return nil, status.Error(codes.PermissionDenied, "仅可操作本校用户")
+		}
+		if target.Role != model.RoleStudent {
+			return nil, status.Error(codes.PermissionDenied, "无权操作管理员")
+		}
+	}
+
+	// 4. 修改状态
+	if err = user_database.SetUserStatus(targetID, model.StatusNormal); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// 5. 清除缓存
+	_ = user_database.DelUserCache(ctx, targetID)
+	_ = recordAuditLog(ctx, targetID, operatorSchool, model.AuditActionUnbanUser, "")
+
+	return &common_pb.BaseResponse{Code: 0, Message: "已解封"}, nil
+}
+
+// ListUsers 管理员查询用户列表，支持筛选 + 游标分页 + 关键词搜索。
+func (s *UserServiceServer) ListUsers(ctx context.Context, req *user_pb.ListUsersRequest) (*user_pb.ListUsersResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.ListUsers")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+
+	// 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可查询用户列表")
+	}
+
+	// admin 只能查本校
+	schoolID := req.GetSchoolId()
+	if operatorRole == int8(model.RoleAdmin) {
+		schoolID = int64(operatorSchool)
+	}
+
+	pageSize := int(req.GetPageSize())
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// 解析游标
+	var cursorID int64
+	if cursorStr := req.GetCursor(); cursorStr != "" {
+		_ = parseCursor(cursorStr, &cursorID)
+	}
+
+	users, hasMore, err := user_database.SearchUsers(
+		schoolID, int(req.GetRole()), int(req.GetStatus()),
+		req.GetKeyword(), cursorID, pageSize,
+	)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	pbUsers := make([]*user_pb.UserInfo, 0, len(users))
+	for i := range users {
+		pbUsers = append(pbUsers, &user_pb.UserInfo{
+			UserId:    users[i].ID,
+			Nickname:  users[i].Nickname,
+			AvatarUrl: users[i].AvatarURL,
+			SchoolId:  users[i].SchoolID,
+			Role:      users[i].Role.String(),
+			CreatedAt: timestamppb.New(users[i].CreatedAt),
+		})
+	}
+
+	var nextCursor string
+	if hasMore && len(users) > 0 {
+		nextCursor = encodeCursor(users[len(users)-1].ID)
+	}
+
+	span.SetAttributes(attribute.Int("users.count", len(users)))
+	return &user_pb.ListUsersResponse{
+		Users:      pbUsers,
+		HasMore:    hasMore,
+		NextCursor: nextCursor,
+	}, nil
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 // extractTraceFromMeta extracts W3C TraceContext from gRPC incoming metadata.
@@ -441,6 +622,56 @@ func userIDFromCtx(ctx context.Context) int64 {
 	return id
 }
 
+// userRoleFromCtx 从 gRPC metadata 读取操作人的角色（由 Gateway 注入）。
+// 返回 0 表示无法获取（当作最低权限处理）。
+func userRoleFromCtx(ctx context.Context) int8 {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return 0
+	}
+	vals := md.Get("user-role")
+	if len(vals) == 0 {
+		return 0
+	}
+	role, err := strconv.ParseInt(vals[0], 10, 8)
+	if err != nil {
+		return 0
+	}
+	return int8(role)
+}
+
+// userSchoolFromCtx 从 gRPC metadata 读取操作人的学校（由 Gateway 注入）。
+// 返回 0 表示未绑定学校。
+func userSchoolFromCtx(ctx context.Context) int64 {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return 0
+	}
+	vals := md.Get("school-id")
+	if len(vals) == 0 {
+		return 0
+	}
+	schoolID, err := strconv.ParseInt(vals[0], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return schoolID
+}
+
+// recordAuditLog 记录管理员操作审计日志。写入失败不阻塞主流程。
+func recordAuditLog(ctx context.Context, targetID, operatorSchool int64, action model.AuditAction, detail string) error {
+	operatorID := userIDFromCtx(ctx)
+	if operatorID == 0 {
+		log.Printf("[user-service] 审计日志跳过：无法获取操作人ID")
+		return nil
+	}
+	if err := user_database.CreateAuditLog(operatorID, targetID, action, detail); err != nil {
+		log.Printf("[user-service] 审计日志写入失败: %v", err)
+		return err
+	}
+	return nil
+}
+
 // getSchoolWithCache fetches a school, using Redis as L1 cache.
 func getSchoolWithCache(ctx context.Context, id int64) (*model.School, error) {
 	if s, _ := user_database.GetSchoolCache(ctx, id); s != nil {
@@ -452,6 +683,191 @@ func getSchoolWithCache(ctx context.Context, id int64) (*model.School, error) {
 	}
 	_ = user_database.SetSchoolCache(ctx, s)
 	return s, nil
+}
+
+// ─── v2.0: 内容审核入口 ──────────────────────────────────────────────────────
+
+// ListContentForAudit 获取待审核内容列表。
+// 调用 Content Service 的 ListPosts(status=pending_review) 接口。
+func (s *UserServiceServer) ListContentForAudit(ctx context.Context, req *user_pb.ListContentForAuditRequest) (*user_pb.ListContentForAuditResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.ListContentForAudit")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+
+	// 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可查看审核列表")
+	}
+
+	// admin 强制本校
+	schoolID := req.GetSchoolId()
+	if operatorRole == int8(model.RoleAdmin) {
+		schoolID = int64(operatorSchool)
+	}
+
+	// TODO: 调用 Content Service 的 ListPosts(status=pending_review, school_id)
+	// 目前 Content Service 的 ListPosts 支持 status 筛选
+	// 集成路径：创建 Content Service gRPC 客户端 → 调用 ListPosts → 转换为 ContentAuditItem
+	_ = schoolID // 暂时标记已用，后续集成时移除
+
+	span.SetAttributes(attribute.Int64("audit.school_id", schoolID))
+	return &user_pb.ListContentForAuditResponse{
+		Items:      []*user_pb.ContentAuditItem{},
+		HasMore:    false,
+		NextCursor: "",
+	}, nil
+}
+
+// AuditContent 审核内容（通过 or 驳回）。
+// 调用 Content Service 的 ApprovePost/RejectPost。
+func (s *UserServiceServer) AuditContent(ctx context.Context, req *user_pb.AuditContentRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.AuditContent")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+
+	// 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可审核内容")
+	}
+
+	contentID := req.GetContentId()
+	action := req.GetAction()
+	reason := req.GetReason()
+
+	if action != "approve" && action != "reject" {
+		return nil, status.Error(codes.InvalidArgument, "action 仅支持 approve/reject")
+	}
+	if action == "reject" && reason == "" {
+		return nil, status.Error(codes.InvalidArgument, "驳回时必须填写原因")
+	}
+
+	span.SetAttributes(
+		attribute.Int64("audit.content_id", contentID),
+		attribute.String("audit.action", action),
+	)
+
+	// TODO: 调用 Content Service 的 ApprovePost/RejectPost
+	// 集成路径：创建 Content Service gRPC 客户端 →
+	//   approve → client.ApprovePost(ctx, &ApprovePostRequest{PostId: contentID})
+	//   reject  → client.RejectPost(ctx, &RejectPostRequest{PostId: contentID, Reason: reason})
+	_ = contentID
+
+	// 记录审计日志
+	_ = recordAuditLog(ctx, contentID, 0, model.AuditActionAuditPost,
+		fmt.Sprintf(`{"action":"%s","reason":"%s"}`, action, reason))
+
+	return &common_pb.BaseResponse{Code: 0, Message: "审核操作已提交"}, nil
+}
+
+// SetUserRole 设置用户角色（仅 super_admin 可操作）。
+// 允许在 student ↔ admin 之间切换，禁止设为 super_admin。
+func (s *UserServiceServer) SetUserRole(ctx context.Context, req *user_pb.SetUserRoleRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.SetUserRole")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorID := userIDFromCtx(ctx)
+	targetID := req.GetTargetUserId()
+	targetRole := model.Role(req.GetRole())
+
+	span.SetAttributes(
+		attribute.Int64("role.target_user", targetID),
+		attribute.Int64("role.new_role", int64(targetRole)),
+	)
+
+	// 1. 仅 super_admin
+	if operatorRole != int8(model.RoleSuperAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅超级管理员可设置角色")
+	}
+
+	// 2. 禁止设置 super_admin 角色
+	if targetRole == model.RoleSuperAdmin {
+		return nil, status.Error(codes.InvalidArgument, "禁止通过接口设置 super_admin 角色")
+	}
+
+	// 3. 允许的切换范围
+	if targetRole != model.RoleStudent && targetRole != model.RoleAdmin {
+		return nil, status.Error(codes.InvalidArgument, "角色仅支持 student/admin")
+	}
+
+	// 4. 不能修改自己
+	if targetID == operatorID {
+		return nil, status.Error(codes.InvalidArgument, "不能修改自己的角色")
+	}
+
+	// 5. 获取目标用户
+	target, err := user_database.GetByID(targetID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "用户不存在")
+	}
+
+	oldRole := target.Role.String()
+	target.Role = targetRole
+	target.UpdatedAt = time.Now()
+
+	// 6. 更新角色（直接用 GORM Update，避免全量覆盖）
+	d, dbErr := db.GetUserDB()
+	if dbErr != nil {
+		return nil, status.Error(codes.Internal, "数据库连接失败")
+	}
+	if err = d.Model(target).Updates(map[string]interface{}{
+		"role":       targetRole,
+		"updated_at": target.UpdatedAt,
+	}).Error; err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// 7. 清除缓存
+	_ = user_database.DelUserCache(ctx, targetID)
+	_ = recordAuditLog(ctx, targetID, 0, model.AuditActionSetRole,
+		fmt.Sprintf(`{"old_role":"%s","new_role":"%s"}`, oldRole, targetRole.String()))
+
+	return &common_pb.BaseResponse{Code: 0, Message: "角色已更新"}, nil
+}
+
+// ─── 游标分页编码 ──────────────────────────────────────────────────────────
+
+// cursorPayload 游标分页编码的 JSON 结构。
+type cursorPayload struct {
+	ID int64 `json:"id"`
+}
+
+// encodeCursor 将 ID 编码为 Base64+JSON 游标。
+func encodeCursor(id int64) string {
+	b, _ := json.Marshal(cursorPayload{ID: id})
+	return base64URLEncode(b)
+}
+
+// parseCursor 解码 Base64+JSON 游标到 id 指针。
+func parseCursor(cursor string, id *int64) error {
+	b, err := base64URLDecode(cursor)
+	if err != nil {
+		return err
+	}
+	var cp cursorPayload
+	if err = json.Unmarshal(b, &cp); err != nil {
+		return err
+	}
+	*id = cp.ID
+	return nil
+}
+
+func base64URLEncode(b []byte) string {
+	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(b)
+}
+
+func base64URLDecode(s string) ([]byte, error) {
+	return base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s)
 }
 
 // Ensure interface compat at compile time.

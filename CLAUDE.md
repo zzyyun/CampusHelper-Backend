@@ -25,10 +25,9 @@
 ├── cmd/                   # 微服务启动入口 (main.go)
 │   ├── gateway/           # API 网关,统一处理路由
 │   ├── user/              # 用户服务
-│   ├── content/           # 内容服务
+│   ├── content/           # 内容服务,管理员系统
 │   ├── task/              # 任务服务
 │   ├── message/           # 消息服务
-│   ├── admin/             # 管理服务
 │   └── file/              # 文件服务
 ├── PB/                   # Protobuf 定义 (.proto) 及生成的代码
 │   └── pb/

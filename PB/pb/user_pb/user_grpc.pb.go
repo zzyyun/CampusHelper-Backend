@@ -20,12 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	UserService_WxLogin_FullMethodName        = "/pb.UserService/WxLogin"
-	UserService_RefreshToken_FullMethodName   = "/pb.UserService/RefreshToken"
-	UserService_BindCampus_FullMethodName     = "/pb.UserService/BindCampus"
-	UserService_GetCurrentUser_FullMethodName = "/pb.UserService/GetCurrentUser"
-	UserService_UpdateUserInfo_FullMethodName = "/pb.UserService/UpdateUserInfo"
-	UserService_ListSchools_FullMethodName    = "/pb.UserService/ListSchools"
+	UserService_WxLogin_FullMethodName             = "/pb.UserService/WxLogin"
+	UserService_RefreshToken_FullMethodName        = "/pb.UserService/RefreshToken"
+	UserService_BindCampus_FullMethodName          = "/pb.UserService/BindCampus"
+	UserService_GetCurrentUser_FullMethodName      = "/pb.UserService/GetCurrentUser"
+	UserService_UpdateUserInfo_FullMethodName      = "/pb.UserService/UpdateUserInfo"
+	UserService_ListSchools_FullMethodName         = "/pb.UserService/ListSchools"
+	UserService_BanUser_FullMethodName             = "/pb.UserService/BanUser"
+	UserService_UnbanUser_FullMethodName           = "/pb.UserService/UnbanUser"
+	UserService_ListUsers_FullMethodName           = "/pb.UserService/ListUsers"
+	UserService_SetUserRole_FullMethodName         = "/pb.UserService/SetUserRole"
+	UserService_ListContentForAudit_FullMethodName = "/pb.UserService/ListContentForAudit"
+	UserService_AuditContent_FullMethodName        = "/pb.UserService/AuditContent"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -44,6 +50,18 @@ type UserServiceClient interface {
 	UpdateUserInfo(ctx context.Context, in *UpdateUserInfoRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error)
 	// 搜索/列出学校（供跨服务调用和前端选择学校）
 	ListSchools(ctx context.Context, in *ListSchoolsRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error)
+	// 封禁用户（admin 封禁本校学生，super_admin 跨校）
+	BanUser(ctx context.Context, in *BanUserRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error)
+	// 解封用户（权限同上）
+	UnbanUser(ctx context.Context, in *UnbanUserRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error)
+	// 管理员查询用户列表（筛选 + 游标分页 + 搜索）
+	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
+	// 设置用户角色（仅 super_admin）
+	SetUserRole(ctx context.Context, in *SetUserRoleRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error)
+	// 获取待审核内容列表（调用 Content Service）
+	ListContentForAudit(ctx context.Context, in *ListContentForAuditRequest, opts ...grpc.CallOption) (*ListContentForAuditResponse, error)
+	// 审核内容（通过 or 驳回，调用 Content Service）
+	AuditContent(ctx context.Context, in *AuditContentRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error)
 }
 
 type userServiceClient struct {
@@ -114,6 +132,66 @@ func (c *userServiceClient) ListSchools(ctx context.Context, in *ListSchoolsRequ
 	return out, nil
 }
 
+func (c *userServiceClient) BanUser(ctx context.Context, in *BanUserRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(common_pb.BaseResponse)
+	err := c.cc.Invoke(ctx, UserService_BanUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) UnbanUser(ctx context.Context, in *UnbanUserRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(common_pb.BaseResponse)
+	err := c.cc.Invoke(ctx, UserService_UnbanUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUsersResponse)
+	err := c.cc.Invoke(ctx, UserService_ListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) SetUserRole(ctx context.Context, in *SetUserRoleRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(common_pb.BaseResponse)
+	err := c.cc.Invoke(ctx, UserService_SetUserRole_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListContentForAudit(ctx context.Context, in *ListContentForAuditRequest, opts ...grpc.CallOption) (*ListContentForAuditResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListContentForAuditResponse)
+	err := c.cc.Invoke(ctx, UserService_ListContentForAudit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AuditContent(ctx context.Context, in *AuditContentRequest, opts ...grpc.CallOption) (*common_pb.BaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(common_pb.BaseResponse)
+	err := c.cc.Invoke(ctx, UserService_AuditContent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -130,6 +208,18 @@ type UserServiceServer interface {
 	UpdateUserInfo(context.Context, *UpdateUserInfoRequest) (*common_pb.BaseResponse, error)
 	// 搜索/列出学校（供跨服务调用和前端选择学校）
 	ListSchools(context.Context, *ListSchoolsRequest) (*ListSchoolsResponse, error)
+	// 封禁用户（admin 封禁本校学生，super_admin 跨校）
+	BanUser(context.Context, *BanUserRequest) (*common_pb.BaseResponse, error)
+	// 解封用户（权限同上）
+	UnbanUser(context.Context, *UnbanUserRequest) (*common_pb.BaseResponse, error)
+	// 管理员查询用户列表（筛选 + 游标分页 + 搜索）
+	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
+	// 设置用户角色（仅 super_admin）
+	SetUserRole(context.Context, *SetUserRoleRequest) (*common_pb.BaseResponse, error)
+	// 获取待审核内容列表（调用 Content Service）
+	ListContentForAudit(context.Context, *ListContentForAuditRequest) (*ListContentForAuditResponse, error)
+	// 审核内容（通过 or 驳回，调用 Content Service）
+	AuditContent(context.Context, *AuditContentRequest) (*common_pb.BaseResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -157,6 +247,24 @@ func (UnimplementedUserServiceServer) UpdateUserInfo(context.Context, *UpdateUse
 }
 func (UnimplementedUserServiceServer) ListSchools(context.Context, *ListSchoolsRequest) (*ListSchoolsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSchools not implemented")
+}
+func (UnimplementedUserServiceServer) BanUser(context.Context, *BanUserRequest) (*common_pb.BaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BanUser not implemented")
+}
+func (UnimplementedUserServiceServer) UnbanUser(context.Context, *UnbanUserRequest) (*common_pb.BaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnbanUser not implemented")
+}
+func (UnimplementedUserServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUsers not implemented")
+}
+func (UnimplementedUserServiceServer) SetUserRole(context.Context, *SetUserRoleRequest) (*common_pb.BaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetUserRole not implemented")
+}
+func (UnimplementedUserServiceServer) ListContentForAudit(context.Context, *ListContentForAuditRequest) (*ListContentForAuditResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListContentForAudit not implemented")
+}
+func (UnimplementedUserServiceServer) AuditContent(context.Context, *AuditContentRequest) (*common_pb.BaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuditContent not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -287,6 +395,114 @@ func _UserService_ListSchools_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_BanUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BanUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).BanUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_BanUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).BanUser(ctx, req.(*BanUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_UnbanUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnbanUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).UnbanUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_UnbanUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).UnbanUser(ctx, req.(*UnbanUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListUsers(ctx, req.(*ListUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_SetUserRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserRoleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).SetUserRole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_SetUserRole_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).SetUserRole(ctx, req.(*SetUserRoleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListContentForAudit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListContentForAuditRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListContentForAudit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListContentForAudit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListContentForAudit(ctx, req.(*ListContentForAuditRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AuditContent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuditContentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AuditContent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AuditContent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AuditContent(ctx, req.(*AuditContentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -317,6 +533,30 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListSchools",
 			Handler:    _UserService_ListSchools_Handler,
+		},
+		{
+			MethodName: "BanUser",
+			Handler:    _UserService_BanUser_Handler,
+		},
+		{
+			MethodName: "UnbanUser",
+			Handler:    _UserService_UnbanUser_Handler,
+		},
+		{
+			MethodName: "ListUsers",
+			Handler:    _UserService_ListUsers_Handler,
+		},
+		{
+			MethodName: "SetUserRole",
+			Handler:    _UserService_SetUserRole_Handler,
+		},
+		{
+			MethodName: "ListContentForAudit",
+			Handler:    _UserService_ListContentForAudit_Handler,
+		},
+		{
+			MethodName: "AuditContent",
+			Handler:    _UserService_AuditContent_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("mysql init: %v", err)
 	}
 	// Auto-migrate User Service tables
-	if err = userDB.AutoMigrate(&model.User{}, &model.School{}); err != nil {
+	if err = userDB.AutoMigrate(&model.User{}, &model.School{}, &model.AdminAuditLog{}); err != nil {
 		log.Fatalf("auto-migrate: %v", err)
 	}
 	fmt.Println("[user-service] MySQL migrated")
@@ -66,6 +66,9 @@ func main() {
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
+	// 启动审计日志清理任务（90 天定期清理）
+	go service.StartAuditCleanupTask()
+
 	user_pb.RegisterUserServiceServer(grpcServer, &service.UserServiceServer{})
 
 	// 注册到 etcd 服务发现（必须在 net.Listen 成功后，确保只通告已绑定的地址）

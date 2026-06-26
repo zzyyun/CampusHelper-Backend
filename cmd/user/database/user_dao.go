@@ -3,6 +3,7 @@ package user_database
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"go_projects/praProject1/cmd/user/model"
 	"go_projects/praProject1/pkg/db"
@@ -99,5 +100,55 @@ func UpdateUserInfo(userID int64, nickname, avatarURL string) error {
 			"nickname":   nickname,
 			"avatar_url": avatarURL,
 		}).Error
+}
+
+// SetUserStatus 更新用户状态（封禁/解封/删除）。
+func SetUserStatus(userID int64, status model.UserStatus) error {
+	return mustUserDB().Model(&model.User{}).Where("id = ?", userID).
+		Update("status", status).Error
+}
+
+// SearchUsers 按条件筛选用户列表，支持游标分页。
+// schoolID=0 时不过滤学校；role=0 时不过滤角色；status=0 时不过滤状态。
+func SearchUsers(schoolID int64, role, status int, keyword string, cursor int64, pageSize int) ([]model.User, bool, error) {
+	query := mustUserDB().Model(&model.User{})
+
+	if schoolID > 0 {
+		query = query.Where("school_id = ?", schoolID)
+	}
+	if role > 0 {
+		query = query.Where("role = ?", role)
+	}
+	if status > 0 {
+		query = query.Where("status = ?", status)
+	}
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		query = query.Where("nickname LIKE ?", "%"+keyword+"%")
+	}
+	if cursor > 0 {
+		query = query.Where("id < ?", cursor)
+	}
+
+	query = query.Order("id DESC").Limit(pageSize + 1) // 多取一条判断 has_more
+
+	var users []model.User
+	if err := query.Find(&users).Error; err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(users) > pageSize
+	if hasMore {
+		users = users[:pageSize]
+	}
+
+	return users, hasMore, nil
+}
+
+// GetUserCountBySchool 统计学校用户数（可选，供后续 Dashboard 使用）。
+func GetUserCountBySchool(schoolID int64) (int64, error) {
+	var count int64
+	err := mustUserDB().Model(&model.User{}).Where("school_id = ?", schoolID).Count(&count).Error
+	return count, err
 }
 

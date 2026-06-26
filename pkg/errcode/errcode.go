@@ -36,6 +36,8 @@ const (
 	ErrCampusNotBound = 20006
 	// ErrInsufficientPermission 角色权限不足
 	ErrInsufficientPermission = 20007
+	// ErrUserBanned 用户已被封禁，禁止登录/刷新
+	ErrUserBanned = 20008
 
 	// ── 3xxxx 限流与配额错误 ─────────────────────────────────
 	// ErrRateLimited 请求过于频繁，触发限流
@@ -70,7 +72,7 @@ func HTTPStatus(code int) int {
 	case code >= 10000 && code < 20000:
 		return 502
 	case code >= 20000 && code < 30000:
-		if code == ErrCampusNotBound || code == ErrInsufficientPermission {
+		if code == ErrCampusNotBound || code == ErrInsufficientPermission || code == ErrUserBanned {
 			return 403
 		}
 		return 401

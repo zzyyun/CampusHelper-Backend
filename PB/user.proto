@@ -24,6 +24,26 @@ service UserService{
 
   // 搜索/列出学校（供跨服务调用和前端选择学校）
   rpc ListSchools (ListSchoolsRequest) returns (ListSchoolsResponse);
+
+  // ─── v2.0 管理员接口 ──────────────────────────────────────────────────────
+
+  // 封禁用户（admin 封禁本校学生，super_admin 跨校）
+  rpc BanUser (BanUserRequest) returns (pb.BaseResponse);
+
+  // 解封用户（权限同上）
+  rpc UnbanUser (UnbanUserRequest) returns (pb.BaseResponse);
+
+  // 管理员查询用户列表（筛选 + 游标分页 + 搜索）
+  rpc ListUsers (ListUsersRequest) returns (ListUsersResponse);
+
+  // 设置用户角色（仅 super_admin）
+  rpc SetUserRole (SetUserRoleRequest) returns (pb.BaseResponse);
+
+  // 获取待审核内容列表（调用 Content Service）
+  rpc ListContentForAudit (ListContentForAuditRequest) returns (ListContentForAuditResponse);
+
+  // 审核内容（通过 or 驳回，调用 Content Service）
+  rpc AuditContent (AuditContentRequest) returns (pb.BaseResponse);
 }
 
 message WxLoginRequest {
@@ -86,6 +106,69 @@ message SchoolInfo {
   int64 school_id = 1;
   string name = 2;
   string province = 3;
+}
+
+// ─── v2.0 管理消息 ────────────────────────────────────────────────────────────
+
+message BanUserRequest {
+  int64 user_id = 1;    // 目标用户 ID
+  int64 school_id = 2;  // 操作管理员所在学校（由 Gateway 注入）
+  string reason = 3;    // 封禁原因
+}
+
+message UnbanUserRequest {
+  int64 user_id = 1;
+  int64 school_id = 2;
+}
+
+message ListUsersRequest {
+  int64 school_id = 1;   // 学校筛选（admin 由 Gateway 注入；super_admin 可传 0=全部）
+  int32 role = 2;        // 角色筛选（0=全部, 1=student, 2=admin, 3=super_admin）
+  int32 status = 3;      // 状态筛选（0=全部, 1=normal, 2=banned, 3=deleted）
+  string keyword = 4;    // nickname 模糊搜索（可选）
+  int32 page_size = 5;   // 每页数量（默认 20，上限 100）
+  string cursor = 6;     // 游标（Base64+JSON）
+}
+
+message ListUsersResponse {
+  repeated UserInfo users = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+}
+
+message SetUserRoleRequest {
+  int64 target_user_id = 1; // 目标用户 ID
+  int32 role = 2;           // 目标角色（1=student, 2=admin；禁止设为 3=super_admin）
+  int64 school_id = 3;      // 操作管理员所在学校
+}
+
+// ─── 内容审核 ─────────────────────────────────────────────────────────────────
+
+message ListContentForAuditRequest {
+  int64 school_id = 1;   // 学校筛选（admin 由 Gateway 注入）
+  int32 page_size = 2;   // 每页数量（默认 20，上限 50）
+  string cursor = 3;     // 游标
+}
+
+message ContentAuditItem {
+  int64 content_id = 1;
+  string title = 2;
+  int64 author_id = 3;
+  string author_name = 4;
+  string content_type = 5;  // post / task
+  int64 created_at = 6;     // unix seconds
+}
+
+message ListContentForAuditResponse {
+  repeated ContentAuditItem items = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+}
+
+message AuditContentRequest {
+  int64 content_id = 1;
+  string action = 2;  // "approve" or "reject"
+  string reason = 3;  // 审核意见（驳回时必填）
 }
 
 // protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/user.proto
