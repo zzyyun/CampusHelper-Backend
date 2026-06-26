@@ -28,17 +28,16 @@ func NewRouter() *gin.Engine {
 	// ── API v1 ─────────────────────────────────────────────────────────────
 	v1 := r.Group("/api/v1")
 
-	
-		// User Service – schools route
-		schools := v1.Group("/schools", middleware.JWTAuth())
-		{
-			schools.GET("", handler.ListSchools)
-		}
+	// User Service – schools route
+	schools := v1.Group("/schools", middleware.JWTAuth())
+	{
+		schools.GET("", handler.ListSchools)
+	}
 
-// User Service – public routes
+	// User Service – public routes
 	userPublic := v1.Group("/user")
 	{
-		userPublic.POST("/login", handler.WxLogin)   // WeChat login → 双 Token
+		userPublic.POST("/login", handler.WxLogin)        // WeChat login → 双 Token
 		userPublic.POST("/refresh", handler.RefreshToken) // Refresh Token → 新 Access Token
 	}
 
@@ -58,16 +57,35 @@ func NewRouter() *gin.Engine {
 		}
 	}
 
-		// Message Service – notification routes (Issue #46)
-		// 所有通知 API 仅需 JWT 鉴权，不需要 school 绑定（未绑定学校用户也可查看通知）
-		notifications := v1.Group("/notifications", middleware.JWTAuth())
+	// Message Service – notification routes (Issue #46)
+	// 所有通知 API 仅需 JWT 鉴权，不需要 school 绑定（未绑定学校用户也可查看通知）
+	notifications := v1.Group("/notifications", middleware.JWTAuth())
+	{
+		notifications.GET("", handler.ListNotifications)
+		notifications.GET("/unread-count", handler.UnreadCount)
+		notifications.PUT("/:id/read", handler.MarkRead)
+		notifications.PUT("/read-all", handler.MarkAllRead)
+		notifications.DELETE("/:id", handler.DeleteNotification)
+	}
+
+	// Task Service – routes (Issue #66)
+	// 读路由：List/Get — JWT 鉴权，不强绑 school
+	tasks := v1.Group("/tasks", middleware.JWTAuth())
+	{
+		tasks.GET("", handler.ListTasks)
+		tasks.GET("/:id", handler.GetTask)
+
+		// 写路由：JWT + 学校绑定
+		write := tasks.Group("", middleware.RequireSchoolBound())
 		{
-			notifications.GET("", handler.ListNotifications)
-			notifications.GET("/unread-count", handler.UnreadCount)
-			notifications.PUT("/:id/read", handler.MarkRead)
-			notifications.PUT("/read-all", handler.MarkAllRead)
-			notifications.DELETE("/:id", handler.DeleteNotification)
+			write.POST("", handler.CreateTask)
+			write.PUT("/:id", handler.UpdateTask)
+			write.DELETE("/:id", handler.DeleteTask)
+			write.POST("/:id/claim", handler.ClaimTask)
+			write.PUT("/:id/complete", handler.CompleteTask)
+			write.PUT("/:id/cancel", handler.CancelTask)
 		}
+	}
 
 	// Content Service – authenticated routes (Issue #22, #41)
 	//   12 个接口：帖子 CRUD / 评论 / 回复 / 点赞 / 搜索
@@ -76,22 +94,22 @@ func NewRouter() *gin.Engine {
 	content := v1.Group("/content", middleware.JWTAuth())
 	{
 		// 读
-		content.GET("/posts", handler.ListPosts)                    // 列表
-		content.GET("/posts/:id", handler.GetPost)                  // 详情
-		content.GET("/posts/:id/comments", handler.ListComments)    // 评论列表
+		content.GET("/posts", handler.ListPosts)                         // 列表
+		content.GET("/posts/:id", handler.GetPost)                       // 详情
+		content.GET("/posts/:id/comments", handler.ListComments)         // 评论列表
 		content.GET("/comments/:id/replies", handler.ListCommentReplies) // 回复列表
-		content.POST("/search", handler.SearchContent)              // 关键词搜索
+		content.POST("/search", handler.SearchContent)                   // 关键词搜索
 
 		// 写：JWT + 学校绑定
 		write := content.Group("", middleware.RequireSchoolBound())
 		{
-			write.POST("/posts", handler.CreatePost)                       // 发帖
-			write.PUT("/posts/:id", handler.UpdatePost)                    // 编辑
-			write.DELETE("/posts/:id", handler.DeletePost)                  // 删帖
-			write.POST("/posts/:id/like", handler.LikePost)                // 点赞
-			write.DELETE("/posts/:id/like", handler.UnlikePost)             // 取消点赞
-			write.POST("/comments", handler.CreateComment)                  // 写评论
-			write.DELETE("/comments/:id", handler.DeleteComment)            // 删评论
+			write.POST("/posts", handler.CreatePost)             // 发帖
+			write.PUT("/posts/:id", handler.UpdatePost)          // 编辑
+			write.DELETE("/posts/:id", handler.DeletePost)       // 删帖
+			write.POST("/posts/:id/like", handler.LikePost)      // 点赞
+			write.DELETE("/posts/:id/like", handler.UnlikePost)  // 取消点赞
+			write.POST("/comments", handler.CreateComment)       // 写评论
+			write.DELETE("/comments/:id", handler.DeleteComment) // 删评论
 		}
 	}
 
