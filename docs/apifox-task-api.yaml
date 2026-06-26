@@ -1,0 +1,700 @@
+openapi: 3.0.3
+info:
+  title: CampusHelper - 任务悬赏服务 API
+  description: |
+    校园互助平台任务悬赏服务 HTTP 接口文档（经 Gateway 代理）。
+
+    **Base URL**: `http://localhost:50000`
+    **鉴权方式**: 所有接口均需 `Authorization: Bearer <access_token>`（通过 `/api/v1/user/login` 获取）
+    **链路追踪**: 请求头 `X-Trace-ID`（可选）→ 响应头 `X-Trace-ID`
+
+    **统一错误响应格式**:
+    ```json
+    { "code": 20006, "message": "未绑定学校，无法访问该接口", "trace_id": "abc123..." }
+    ```
+
+    **错误码分段**: `1xxxx`=第三方依赖 | `2xxxx`=鉴权权限 | `3xxxx`=限流 | `4xxxx`=参数错误 | `5xxxx`=下游服务 | `9xxxx`=系统内部
+
+    **写接口鉴权要求**: JWT + 已绑定学校（`RequireSchoolBound` 中间件，未绑定返回 403 / 20006）
+    **读接口鉴权要求**: 仅 JWT（未绑定学校也可浏览）
+
+    **任务类型**: `1`=跑腿 | `2`=拼车 | `3`=悬赏
+    **任务状态**: `1`=待接单(open) | `2`=进行中(in_progress) | `3`=已完成(completed) | `4`=已取消(cancelled) | `5`=已过期(expired)
+
+    **联系方式可见性**:
+    - 接单前（open 状态）：contact / note 字段**完全隐藏**
+    - 接单后（in_progress/completed）：对双方展示对方联系方式
+    - 列表接口始终不返回 contact / note 字段
+  version: 1.0.0
+  contact:
+    name: CampusHelper Team
+
+servers:
+  - url: http://localhost:50000
+    description: 本地开发环境
+
+tags:
+  - name: 任务 CRUD
+    description: 任务的创建 / 列表 / 详情 / 编辑 / 删除
+  - name: 任务操作
+    description: 接单 / 完成 / 取消
+
+components:
+  securitySchemes:
+    BearerToken:
+      type: http
+      scheme: bearer
+      description: Access Token（JWT），通过 POST /api/v1/user/login 获取，默认 24 小时有效
+
+  parameters:
+    XTraceID:
+      name: X-Trace-ID
+      in: header
+      required: false
+      description: 自定义追踪 ID（32 字符 hex），缺失时自动生成
+      schema:
+        type: string
+        example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    TaskID:
+      name: id
+      in: path
+      required: true
+      description: 任务 ID
+      schema:
+        type: integer
+        format: int64
+        example: 1893046982369177600
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: integer
+          description: 业务错误码（0=成功）
+          example: 20006
+        message:
+          type: string
+          description: 错误描述
+          example: "未绑定学校，无法访问该接口"
+        trace_id:
+          type: string
+          description: 链路追踪 ID
+          example: "0193a2b4c5d6e7f8a9b0c1d2e3f4a5b6"
+
+    Task:
+      type: object
+      description: 任务对象
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1893046982369177600
+        school_id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          description: 发布者 ID
+          example: 100001
+        claimant_id:
+          type: integer
+          format: int64
+          description: 接单者 ID（0=未接单）
+          example: 0
+        task_type:
+          type: integer
+          description: "任务类型 (1=跑腿 2=拼车 3=悬赏)"
+          enum: [1, 2, 3]
+          example: 1
+        title:
+          type: string
+          description: 任务标题（1-128 字）
+          example: "代取快递 3 号楼"
+        description:
+          type: string
+          description: 任务详细描述
+          example: "帮我去菜鸟驿站取一个快递，单号后面发你"
+        location:
+          type: string
+          description: 地点
+          example: "菜鸟驿站"
+        reward_desc:
+          type: string
+          description: 报酬说明（文字）
+          example: "一杯奶茶钱"
+        contact:
+          type: string
+          description: 发布者联系方式（接单后对接单者可见）
+          example: "微信: zhangsan2026"
+        note:
+          type: string
+          description: 发布者留言/备注（接单后对接单者可见）
+          example: "快递比较大，记得骑小推车"
+        claimant_contact:
+          type: string
+          description: 接单者联系方式（接单后对发布者可见）
+          example: "微信: lisi2026"
+        claimant_msg:
+          type: string
+          description: 接单者留言（接单后对发布者可见）
+          example: "大概半小时后到"
+        status:
+          type: integer
+          description: "任务状态 (1=待接单 2=进行中 3=已完成 4=已取消 5=已过期)"
+          enum: [1, 2, 3, 4, 5]
+          example: 1
+        expired_at:
+          type: integer
+          format: int64
+          description: 过期时间（Unix 秒）
+          example: 1719280000
+        created_at:
+          type: integer
+          format: int64
+          description: 创建时间（Unix 秒）
+          example: 1719200000
+        updated_at:
+          type: integer
+          format: int64
+          description: 更新时间（Unix 秒）
+          example: 1719200000
+        publisher_nickname:
+          type: string
+          description: 发布者昵称（跨服务填充）
+          example: "张三"
+        publisher_avatar:
+          type: string
+          description: 发布者头像 URL（跨服务填充）
+          example: "https://cdn.example.com/avatar/100001.png"
+
+    CreateTaskReq:
+      type: object
+      required: [task_type, title]
+      properties:
+        task_type:
+          type: integer
+          description: "任务类型 (1=跑腿 2=拼车 3=悬赏)"
+          enum: [1, 2, 3]
+          example: 1
+        title:
+          type: string
+          description: 任务标题（1-128 字）
+          example: "代取快递 3 号楼"
+        description:
+          type: string
+          description: 任务详细描述
+          example: "帮我去菜鸟驿站取一个快递"
+        location:
+          type: string
+          description: 地点
+          example: "菜鸟驿站"
+        reward_desc:
+          type: string
+          description: 报酬说明（文字）
+          example: "一杯奶茶钱"
+        contact:
+          type: string
+          description: 发布者联系方式（接单前隐藏，接单后对接单者可见）
+          example: "微信: zhangsan2026"
+        note:
+          type: string
+          description: 发布者留言/备注（接单前隐藏，接单后对接单者可见）
+          example: "快递比较大，记得骑小推车"
+        expired_at:
+          type: integer
+          format: int64
+          description: 过期时间（Unix 秒，可选，默认当前时间 + 24h）
+          example: 1719280000
+
+    CreateTaskResp:
+      type: object
+      properties:
+        task_id:
+          type: integer
+          format: int64
+          description: 创建的任务 ID
+          example: 1893046982369177600
+        status:
+          type: integer
+          format: int64
+          description: 业务状态码（0=成功）
+          example: 0
+        created_at:
+          type: integer
+          format: int64
+          description: 创建时间（Unix 秒）
+          example: 1719200000
+
+    UpdateTaskReq:
+      type: object
+      description: 至少更新一个字段
+      properties:
+        title:
+          type: string
+          description: 新标题（可选）
+          example: "代取快递 3 号楼（更新）"
+        description:
+          type: string
+          description: 新描述（可选）
+          example: "帮我去菜鸟驿站取一个快递，单号已私信"
+        location:
+          type: string
+          description: 新地点（可选）
+          example: "南区菜鸟驿站"
+        reward_desc:
+          type: string
+          description: 新报酬说明（可选）
+          example: "两杯奶茶"
+        contact:
+          type: string
+          description: 新联系方式（可选）
+          example: "微信: zhangsan2026"
+        note:
+          type: string
+          description: 新留言/备注（可选）
+          example: "快递比较大，记得骑小推车"
+
+    ClaimTaskReq:
+      type: object
+      required: [contact]
+      properties:
+        contact:
+          type: string
+          description: 接单者联系方式（必填，微信号/手机号）
+          example: "微信: lisi2026"
+        message:
+          type: string
+          description: 接单者留言（可选）
+          example: "大概半小时后到"
+
+    ListTasksResp:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+        has_more:
+          type: boolean
+          description: 是否还有更多数据
+          example: true
+        next_cursor:
+          type: string
+          description: 下一页游标，空字符串表示已到末尾
+          example: "eyJpZCI6MTg5MzA0Njk4MjM2OTE3NzYwMX0="
+
+    BaseResp:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 操作结果
+          example: "ok"
+
+    ClaimResp:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 接单结果
+          example: "接单成功"
+
+paths:
+
+  # ==================================================
+  # 任务 CRUD
+  # ==================================================
+
+  /api/v1/tasks:
+    post:
+      operationId: createTask
+      tags: [任务 CRUD]
+      summary: 发布任务
+      description: |
+        创建新任务，支持跑腿 / 拼车 / 悬赏三种类型。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 创建后状态为 open（立即上架，无需审核）
+        - 同 school_id 隔离
+        - 未指定 expired_at 时默认 24 小时后过期
+        - DFA 敏感词扫描
+      security: [{BearerToken: []}]
+      parameters: [{ $ref: "#/components/parameters/XTraceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTaskReq" }
+            examples:
+              跑腿任务:
+                value:
+                  task_type: 1
+                  title: "代取快递 3 号楼"
+                  description: "帮我去菜鸟驿站取一个快递"
+                  location: "菜鸟驿站"
+                  reward_desc: "一杯奶茶钱"
+                  contact: "微信: zhangsan2026"
+                  note: "快递比较大，记得骑小推车"
+                  expired_at: 1719280000
+              拼车任务:
+                value:
+                  task_type: 2
+                  title: "周六拼车去高铁站"
+                  description: "本周六下午 2 点出发，有一起拼车的同学吗？"
+                  location: "校门口"
+                  reward_desc: "AA 制，大约 30 元/人"
+                  contact: "手机: 138xxxx5678"
+              悬赏任务:
+                value:
+                  task_type: 3
+                  title: "求高数笔记"
+                  description: "需要本学期高等数学课堂笔记的完整版，最好是手写的"
+                  reward_desc: "50 元"
+                  note: "最好是同济第七版对应的笔记"
+      responses:
+        "200":
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateTaskResp" }
+              example:
+                task_id: 1893046982369177600
+                status: 0
+                created_at: 1719200000
+        "400":
+          description: 参数错误 / 敏感词命中
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    get:
+      operationId: listTasks
+      tags: [任务 CRUD]
+      summary: 任务列表
+      description: |
+        获取当前学校的任务列表（游标分页 + 类型筛选），适合无限下拉场景。
+        - 需要 JWT 鉴权（未绑定学校也可调用）
+        - school_id 从 JWT 自动注入，无需手动传
+        - 列表始终不返回 contact / note 字段
+        - 默认按 created_at DESC 排序
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/XTraceID"
+        - name: cursor
+          in: query
+          description: 上一页返回的 next_cursor，首次请求不传
+          schema: { type: string, example: "eyJpZCI6MTg5MzA0Njk4MjM2OTE3NzYwMX0=" }
+        - name: page_size
+          in: query
+          description: 每页条数（默认 20，最大 50）
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: task_type
+          in: query
+          description: "任务类型筛选 (0=全部 1=跑腿 2=拼车 3=悬赏)"
+          schema: { type: integer, enum: [0, 1, 2, 3], default: 0 }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListTasksResp" }
+              example:
+                tasks:
+                  - id: 1893046982369177600
+                    school_id: 1
+                    user_id: 100001
+                    claimant_id: 0
+                    task_type: 1
+                    title: "代取快递 3 号楼"
+                    description: "帮我去菜鸟驿站取一个快递"
+                    location: "菜鸟驿站"
+                    reward_desc: "一杯奶茶钱"
+                    status: 1
+                    expired_at: 1719280000
+                    created_at: 1719200000
+                    updated_at: 1719200000
+                    publisher_nickname: "张三"
+                    publisher_avatar: "https://cdn.example.com/avatar/100001.png"
+                has_more: true
+                next_cursor: "eyJpZCI6MTg5MzA0Njk4MjM2OTE3NzYwMX0="
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [任务 CRUD]
+      summary: 任务详情
+      description: |
+        获取单个任务详情，含发布者信息。
+        - 需要 JWT 鉴权（未绑定学校也可调用）
+        - 联系方式可见性规则：
+          - 当前用户是发布者或接单者时，展示对方联系方式
+          - 其他用户不可见 contact / note / claimant_contact / claimant_msg
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+              example:
+                id: 1893046982369177600
+                school_id: 1
+                user_id: 100001
+                claimant_id: 100002
+                task_type: 1
+                title: "代取快递 3 号楼"
+                description: "帮我去菜鸟驿站取一个快递"
+                location: "菜鸟驿站"
+                reward_desc: "一杯奶茶钱"
+                contact: "微信: zhangsan2026"
+                note: "快递比较大，记得骑小推车"
+                claimant_contact: "微信: lisi2026"
+                claimant_msg: "大概半小时后到"
+                status: 2
+                expired_at: 1719280000
+                created_at: 1719200000
+                updated_at: 1719200100
+                publisher_nickname: "张三"
+                publisher_avatar: "https://cdn.example.com/avatar/100001.png"
+        "404":
+          description: 任务不存在
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    put:
+      operationId: updateTask
+      tags: [任务 CRUD]
+      summary: 编辑任务
+      description: |
+        编辑任务（仅发布者本人可操作，仅 open 状态可编辑）。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 至少更新一个字段
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/XTraceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTaskReq" }
+            examples:
+              修改标题:
+                value: { title: "代取快递 3 号楼（更新）" }
+              修改报酬:
+                value: { reward_desc: "两杯奶茶" }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400":
+          description: 参数错误 / 非发布者本人 / 非 open 状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+    delete:
+      operationId: deleteTask
+      tags: [任务 CRUD]
+      summary: 删除任务
+      description: |
+        软删除任务（仅发布者本人可操作，仅 open 状态可删除）。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 已有接单者的任务不可删除
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BaseResp" }
+              example: { message: "ok" }
+        "400":
+          description: 非发布者本人 / 非 open 状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ==================================================
+  # 任务操作
+  # ==================================================
+
+  /api/v1/tasks/{id}/claim:
+    post:
+      operationId: claimTask
+      tags: [任务操作]
+      summary: 接单
+      description: |
+        接下一个待接单的任务（先到先得）。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 仅 open 状态可接单
+        - 发布者本人不可接自己的任务
+        - 使用数据库乐观锁防止超卖（CAS: status=open AND claimant_id=0）
+        - 接单成功后触发 `task.claimed` MQ 事件
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/XTraceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClaimTaskReq" }
+            examples:
+              接单（带留言）:
+                value:
+                  contact: "微信: lisi2026"
+                  message: "大概半小时后到"
+              接单（不带留言）:
+                value:
+                  contact: "手机: 138xxxx5678"
+      responses:
+        "200":
+          description: 接单成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClaimResp" }
+              example: { message: "接单成功" }
+        "400":
+          description: 非开放状态 / 已被接单 / 发布者不可接自己的任务
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/tasks/{id}/complete:
+    put:
+      operationId: completeTask
+      tags: [任务操作]
+      summary: 完成任务
+      description: |
+        将任务标记为已完成。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 仅接单者可操作
+        - 仅 in_progress 状态可完成
+        - 完成后触发 `task.completed` MQ 事件
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 完成成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BaseResp" }
+              example: { message: "ok" }
+        "400":
+          description: 非接单者 / 非 in_progress 状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/tasks/{id}/cancel:
+    put:
+      operationId: cancelTask
+      tags: [任务操作]
+      summary: 取消任务
+      description: |
+        取消一个任务。
+        - 需要 JWT 鉴权 + 已绑定学校
+        - 发布者取消：open / in_progress 状态均可 → cancelled
+        - 接单者取消：仅 in_progress 状态 → cancelled（释放任务）
+        - 取消后触发 `task.cancelled` MQ 事件
+      security: [{BearerToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/XTraceID"
+      responses:
+        "200":
+          description: 取消成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BaseResp" }
+              example: { message: "ok" }
+        "400":
+          description: 非相关方 / 状态不允许取消
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: 未授权
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: 未绑定学校
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }

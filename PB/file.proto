@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package pb;
+option go_package = "/file_pb";
+
+import "PB/common.proto";
+
+// =====================================================
+// FileService 文件存储服务接口定义
+// 对应 docs/file-service-prd.md v1.0
+// =====================================================
+service FileService {
+  // 查询文件元数据（仅上传者可查询）
+  rpc GetFile (GetFileRequest) returns (FileInfo);
+  // 软删除文件（仅上传者）
+  rpc DeleteFile (DeleteFileRequest) returns (pb.BaseResponse);
+}
+
+message FileInfo {
+  int64 id = 1;
+  int64 school_id = 2;
+  int64 uploader_id = 3;
+  string category = 4;        // avatar / post / task / other
+  string url = 5;
+  string content_type = 6;
+  int64 size_bytes = 7;
+  string sha256 = 8;
+  int64 created_at = 9;
+}
+
+message GetFileRequest {
+  int64 file_id = 1;
+  int64 user_id = 2;          // 用于权限校验
+}
+
+message DeleteFileRequest {
+  int64 file_id = 1;
+  int64 user_id = 2;
+}
+
+// ─── 上传响应消息（供 Gateway handler 复用）───────────────────────
+
+message UploadResponse {
+  int64 file_id = 1;
+  string url = 2;
+  int64 size_bytes = 3;
+  string content_type = 4;
+}
+
+// protoc -I . --go_out=./PB/pb --go-grpc_out=./PB/pb ./PB/file.proto
