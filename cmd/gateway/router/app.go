@@ -89,27 +89,37 @@ func NewRouter() *gin.Engine {
 
 	
 		// File Service – routes (Issue #79)
-		// 读路由：GetFile — JWT 鉴权，不强绑 school
-		files := v1.Group("/files", middleware.JWTAuth())
-		{
-			files.POST("/upload", handler.UploadFile)
-			files.GET("/:id", handler.GetFile)
+	// 读路由：GetFile — JWT 鉴权，不强绑 school
+	files := v1.Group("/files", middleware.JWTAuth())
+	{
+		files.POST("/upload", handler.UploadFile)
+		files.GET("/:id", handler.GetFile)
 
-			// 写路由：JWT + 学校绑定
-			write := files.Group("", middleware.RequireSchoolBound())
-			{
-				write.DELETE("/:id", handler.DeleteFile)
-			}
-		}
+		// 写路由：JWT + 学校绑定
+		write := files.Group("", middleware.RequireSchoolBound())
 		{
-			files.GET("/:id", handler.GetFile)
-
-			// 写路由：JWT + 学校绑定
-			write := files.Group("", middleware.RequireSchoolBound())
-			{
-				write.DELETE("/:id", handler.DeleteFile)
-			}
+			write.DELETE("/:id", handler.DeleteFile)
 		}
+	}
+
+	// Admin Service – v2.0 管理员路由组 (Issue #85)
+	//   - admin 级别可访问封禁/解封/用户列表/内容审核
+	//   - super_admin 级别额外可访问角色设置
+	admin := v1.Group("/admin", middleware.JWTAuth())
+	admin.Use(middleware.RequireRole(2)) // RoleAdmin = 2
+	{
+		admin.POST("/users/ban", handler.AdminBanUser)
+		admin.POST("/users/unban", handler.AdminUnbanUser)
+		admin.GET("/users/list", handler.AdminListUsers)
+		admin.GET("/content/audit-list", handler.AdminListContentForAudit)
+		admin.POST("/content/audit", handler.AdminAuditContent)
+	}
+	// SetUserRole 需要 super_admin
+	superAdminRole := v1.Group("/admin/users", middleware.JWTAuth())
+	superAdminRole.Use(middleware.RequireRole(3)) // RoleSuperAdmin = 3
+	{
+		superAdminRole.POST("/set-role", handler.AdminSetUserRole)
+	}
 
 // Content Service – authenticated routes (Issue #22, #41)
 	//   12 个接口：帖子 CRUD / 评论 / 回复 / 点赞 / 搜索
