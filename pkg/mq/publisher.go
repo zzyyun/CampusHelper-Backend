@@ -162,6 +162,16 @@ const (
 	EventContentReplied   = "content.replied"       // 评论被回复 → 通知父评论作者
 )
 
+// ─── Task 事件常量 ─────────────────────────────────────────────────────────
+
+const (
+	EventTaskCreated   = "task.created"   // 任务创建
+	EventTaskClaimed   = "task.claimed"   // 任务被接单
+	EventTaskCompleted = "task.completed" // 任务完成
+	EventTaskCancelled = "task.cancelled" // 任务取消
+	EventTaskExpired   = "task.expired"   // 任务过期
+)
+
 // 确保 JSON 序列化接口实现
 var _ = fmt.Sprintf("%v", ContentEvent{})
 var _ = json.Marshal
