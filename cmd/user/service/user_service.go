@@ -685,6 +685,87 @@ func getSchoolWithCache(ctx context.Context, id int64) (*model.School, error) {
 	return s, nil
 }
 
+// ─── v2.0: 内容审核入口 ──────────────────────────────────────────────────────
+
+// ListContentForAudit 获取待审核内容列表。
+// 调用 Content Service 的 ListPosts(status=pending_review) 接口。
+func (s *UserServiceServer) ListContentForAudit(ctx context.Context, req *user_pb.ListContentForAuditRequest) (*user_pb.ListContentForAuditResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.ListContentForAudit")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+
+	// 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可查看审核列表")
+	}
+
+	// admin 强制本校
+	schoolID := req.GetSchoolId()
+	if operatorRole == int8(model.RoleAdmin) {
+		schoolID = int64(operatorSchool)
+	}
+
+	// TODO: 调用 Content Service 的 ListPosts(status=pending_review, school_id)
+	// 目前 Content Service 的 ListPosts 支持 status 筛选
+	// 集成路径：创建 Content Service gRPC 客户端 → 调用 ListPosts → 转换为 ContentAuditItem
+	_ = schoolID // 暂时标记已用，后续集成时移除
+
+	span.SetAttributes(attribute.Int64("audit.school_id", schoolID))
+	return &user_pb.ListContentForAuditResponse{
+		Items:      []*user_pb.ContentAuditItem{},
+		HasMore:    false,
+		NextCursor: "",
+	}, nil
+}
+
+// AuditContent 审核内容（通过 or 驳回）。
+// 调用 Content Service 的 ApprovePost/RejectPost。
+func (s *UserServiceServer) AuditContent(ctx context.Context, req *user_pb.AuditContentRequest) (*common_pb.BaseResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.AuditContent")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+
+	// 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可审核内容")
+	}
+
+	contentID := req.GetContentId()
+	action := req.GetAction()
+	reason := req.GetReason()
+
+	if action != "approve" && action != "reject" {
+		return nil, status.Error(codes.InvalidArgument, "action 仅支持 approve/reject")
+	}
+	if action == "reject" && reason == "" {
+		return nil, status.Error(codes.InvalidArgument, "驳回时必须填写原因")
+	}
+
+	span.SetAttributes(
+		attribute.Int64("audit.content_id", contentID),
+		attribute.String("audit.action", action),
+	)
+
+	// TODO: 调用 Content Service 的 ApprovePost/RejectPost
+	// 集成路径：创建 Content Service gRPC 客户端 →
+	//   approve → client.ApprovePost(ctx, &ApprovePostRequest{PostId: contentID})
+	//   reject  → client.RejectPost(ctx, &RejectPostRequest{PostId: contentID, Reason: reason})
+	_ = contentID
+
+	// 记录审计日志
+	_ = recordAuditLog(ctx, contentID, 0, model.AuditActionAuditPost,
+		fmt.Sprintf(`{"action":"%s","reason":"%s"}`, action, reason))
+
+	return &common_pb.BaseResponse{Code: 0, Message: "审核操作已提交"}, nil
+}
+
 // SetUserRole 设置用户角色（仅 super_admin 可操作）。
 // 允许在 student ↔ admin 之间切换，禁止设为 super_admin。
 func (s *UserServiceServer) SetUserRole(ctx context.Context, req *user_pb.SetUserRoleRequest) (*common_pb.BaseResponse, error) {
