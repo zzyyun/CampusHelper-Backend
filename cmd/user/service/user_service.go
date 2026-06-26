@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -505,6 +506,72 @@ func (s *UserServiceServer) UnbanUser(ctx context.Context, req *user_pb.UnbanUse
 	return &common_pb.BaseResponse{Code: 0, Message: "已解封"}, nil
 }
 
+// ListUsers 管理员查询用户列表，支持筛选 + 游标分页 + 关键词搜索。
+func (s *UserServiceServer) ListUsers(ctx context.Context, req *user_pb.ListUsersRequest) (*user_pb.ListUsersResponse, error) {
+	ctx = extractTraceFromMeta(ctx)
+	tracer := otel.Tracer(serviceName)
+	ctx, span := tracer.Start(ctx, "UserService.ListUsers")
+	defer span.End()
+
+	operatorRole := userRoleFromCtx(ctx)
+	operatorSchool := userSchoolFromCtx(ctx)
+
+	// 权限校验
+	if operatorRole < int8(model.RoleAdmin) {
+		return nil, status.Error(codes.PermissionDenied, "仅管理员可查询用户列表")
+	}
+
+	// admin 只能查本校
+	schoolID := req.GetSchoolId()
+	if operatorRole == int8(model.RoleAdmin) {
+		schoolID = int64(operatorSchool)
+	}
+
+	pageSize := int(req.GetPageSize())
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// 解析游标
+	var cursorID int64
+	if cursorStr := req.GetCursor(); cursorStr != "" {
+		_ = parseCursor(cursorStr, &cursorID)
+	}
+
+	users, hasMore, err := user_database.SearchUsers(
+		schoolID, int(req.GetRole()), int(req.GetStatus()),
+		req.GetKeyword(), cursorID, pageSize,
+	)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	pbUsers := make([]*user_pb.UserInfo, 0, len(users))
+	for i := range users {
+		pbUsers = append(pbUsers, &user_pb.UserInfo{
+			UserId:    users[i].ID,
+			Nickname:  users[i].Nickname,
+			AvatarUrl: users[i].AvatarURL,
+			SchoolId:  users[i].SchoolID,
+			Role:      users[i].Role.String(),
+			CreatedAt: timestamppb.New(users[i].CreatedAt),
+		})
+	}
+
+	var nextCursor string
+	if hasMore && len(users) > 0 {
+		nextCursor = encodeCursor(users[len(users)-1].ID)
+	}
+
+	span.SetAttributes(attribute.Int("users.count", len(users)))
+	return &user_pb.ListUsersResponse{
+		Users:      pbUsers,
+		HasMore:    hasMore,
+		NextCursor: nextCursor,
+	}, nil
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 // extractTraceFromMeta extracts W3C TraceContext from gRPC incoming metadata.
@@ -621,6 +688,41 @@ func getSchoolWithCache(ctx context.Context, id int64) (*model.School, error) {
 	}
 	_ = user_database.SetSchoolCache(ctx, s)
 	return s, nil
+}
+
+// ─── 游标分页编码 ──────────────────────────────────────────────────────────
+
+// cursorPayload 游标分页编码的 JSON 结构。
+type cursorPayload struct {
+	ID int64 `json:"id"`
+}
+
+// encodeCursor 将 ID 编码为 Base64+JSON 游标。
+func encodeCursor(id int64) string {
+	b, _ := json.Marshal(cursorPayload{ID: id})
+	return base64URLEncode(b)
+}
+
+// parseCursor 解码 Base64+JSON 游标到 id 指针。
+func parseCursor(cursor string, id *int64) error {
+	b, err := base64URLDecode(cursor)
+	if err != nil {
+		return err
+	}
+	var cp cursorPayload
+	if err = json.Unmarshal(b, &cp); err != nil {
+		return err
+	}
+	*id = cp.ID
+	return nil
+}
+
+func base64URLEncode(b []byte) string {
+	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(b)
+}
+
+func base64URLDecode(s string) ([]byte, error) {
+	return base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s)
 }
 
 // Ensure interface compat at compile time.
