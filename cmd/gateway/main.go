@@ -48,6 +48,11 @@ func main() {
 		log.Fatalf("message client init: %v", err)
 	}
 	fmt.Println("[gateway] message-service client connected")
+	if err = client.InitTaskClient(); err != nil {
+		log.Fatalf("task client init: %v", err)
+	}
+	fmt.Println("[gateway] task-service client connected")
+
 
 
 	// ── HTTP Server ───────────────────────────────────────────────────────────
