@@ -651,6 +651,586 @@ func (x *SchoolInfo) GetProvince() string {
 	return ""
 }
 
+type BanUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`       // 目标用户 ID
+	SchoolId      int64                  `protobuf:"varint,2,opt,name=school_id,json=schoolId,proto3" json:"school_id,omitempty"` // 操作管理员所在学校（由 Gateway 注入）
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`                      // 封禁原因
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BanUserRequest) Reset() {
+	*x = BanUserRequest{}
+	mi := &file_PB_user_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BanUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BanUserRequest) ProtoMessage() {}
+
+func (x *BanUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BanUserRequest.ProtoReflect.Descriptor instead.
+func (*BanUserRequest) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *BanUserRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *BanUserRequest) GetSchoolId() int64 {
+	if x != nil {
+		return x.SchoolId
+	}
+	return 0
+}
+
+func (x *BanUserRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type UnbanUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	SchoolId      int64                  `protobuf:"varint,2,opt,name=school_id,json=schoolId,proto3" json:"school_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnbanUserRequest) Reset() {
+	*x = UnbanUserRequest{}
+	mi := &file_PB_user_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnbanUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnbanUserRequest) ProtoMessage() {}
+
+func (x *UnbanUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnbanUserRequest.ProtoReflect.Descriptor instead.
+func (*UnbanUserRequest) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *UnbanUserRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *UnbanUserRequest) GetSchoolId() int64 {
+	if x != nil {
+		return x.SchoolId
+	}
+	return 0
+}
+
+type ListUsersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SchoolId      int64                  `protobuf:"varint,1,opt,name=school_id,json=schoolId,proto3" json:"school_id,omitempty"` // 学校筛选（admin 由 Gateway 注入；super_admin 可传 0=全部）
+	Role          int32                  `protobuf:"varint,2,opt,name=role,proto3" json:"role,omitempty"`                         // 角色筛选（0=全部, 1=student, 2=admin, 3=super_admin）
+	Status        int32                  `protobuf:"varint,3,opt,name=status,proto3" json:"status,omitempty"`                     // 状态筛选（0=全部, 1=normal, 2=banned, 3=deleted）
+	Keyword       string                 `protobuf:"bytes,4,opt,name=keyword,proto3" json:"keyword,omitempty"`                    // nickname 模糊搜索（可选）
+	PageSize      int32                  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // 每页数量（默认 20，上限 100）
+	Cursor        string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`                      // 游标（Base64+JSON）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUsersRequest) Reset() {
+	*x = ListUsersRequest{}
+	mi := &file_PB_user_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUsersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUsersRequest) ProtoMessage() {}
+
+func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
+func (*ListUsersRequest) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListUsersRequest) GetSchoolId() int64 {
+	if x != nil {
+		return x.SchoolId
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetRole() int32 {
+	if x != nil {
+		return x.Role
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetStatus() int32 {
+	if x != nil {
+		return x.Status
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetKeyword() string {
+	if x != nil {
+		return x.Keyword
+	}
+	return ""
+}
+
+func (x *ListUsersRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
+}
+
+type ListUsersResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Users         []*UserInfo            `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	HasMore       bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	NextCursor    string                 `protobuf:"bytes,3,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUsersResponse) Reset() {
+	*x = ListUsersResponse{}
+	mi := &file_PB_user_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUsersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUsersResponse) ProtoMessage() {}
+
+func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
+func (*ListUsersResponse) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListUsersResponse) GetUsers() []*UserInfo {
+	if x != nil {
+		return x.Users
+	}
+	return nil
+}
+
+func (x *ListUsersResponse) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
+}
+
+func (x *ListUsersResponse) GetNextCursor() string {
+	if x != nil {
+		return x.NextCursor
+	}
+	return ""
+}
+
+type SetUserRoleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetUserId  int64                  `protobuf:"varint,1,opt,name=target_user_id,json=targetUserId,proto3" json:"target_user_id,omitempty"` // 目标用户 ID
+	Role          int32                  `protobuf:"varint,2,opt,name=role,proto3" json:"role,omitempty"`                                       // 目标角色（1=student, 2=admin；禁止设为 3=super_admin）
+	SchoolId      int64                  `protobuf:"varint,3,opt,name=school_id,json=schoolId,proto3" json:"school_id,omitempty"`               // 操作管理员所在学校
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserRoleRequest) Reset() {
+	*x = SetUserRoleRequest{}
+	mi := &file_PB_user_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserRoleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserRoleRequest) ProtoMessage() {}
+
+func (x *SetUserRoleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserRoleRequest.ProtoReflect.Descriptor instead.
+func (*SetUserRoleRequest) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SetUserRoleRequest) GetTargetUserId() int64 {
+	if x != nil {
+		return x.TargetUserId
+	}
+	return 0
+}
+
+func (x *SetUserRoleRequest) GetRole() int32 {
+	if x != nil {
+		return x.Role
+	}
+	return 0
+}
+
+func (x *SetUserRoleRequest) GetSchoolId() int64 {
+	if x != nil {
+		return x.SchoolId
+	}
+	return 0
+}
+
+type ListContentForAuditRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SchoolId      int64                  `protobuf:"varint,1,opt,name=school_id,json=schoolId,proto3" json:"school_id,omitempty"` // 学校筛选（admin 由 Gateway 注入）
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // 每页数量（默认 20，上限 50）
+	Cursor        string                 `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`                      // 游标
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListContentForAuditRequest) Reset() {
+	*x = ListContentForAuditRequest{}
+	mi := &file_PB_user_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListContentForAuditRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListContentForAuditRequest) ProtoMessage() {}
+
+func (x *ListContentForAuditRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListContentForAuditRequest.ProtoReflect.Descriptor instead.
+func (*ListContentForAuditRequest) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListContentForAuditRequest) GetSchoolId() int64 {
+	if x != nil {
+		return x.SchoolId
+	}
+	return 0
+}
+
+func (x *ListContentForAuditRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListContentForAuditRequest) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
+}
+
+type ContentAuditItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContentId     int64                  `protobuf:"varint,1,opt,name=content_id,json=contentId,proto3" json:"content_id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	AuthorId      int64                  `protobuf:"varint,3,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
+	AuthorName    string                 `protobuf:"bytes,4,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
+	ContentType   string                 `protobuf:"bytes,5,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"` // post / task
+	CreatedAt     int64                  `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`      // unix seconds
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContentAuditItem) Reset() {
+	*x = ContentAuditItem{}
+	mi := &file_PB_user_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContentAuditItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContentAuditItem) ProtoMessage() {}
+
+func (x *ContentAuditItem) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContentAuditItem.ProtoReflect.Descriptor instead.
+func (*ContentAuditItem) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ContentAuditItem) GetContentId() int64 {
+	if x != nil {
+		return x.ContentId
+	}
+	return 0
+}
+
+func (x *ContentAuditItem) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ContentAuditItem) GetAuthorId() int64 {
+	if x != nil {
+		return x.AuthorId
+	}
+	return 0
+}
+
+func (x *ContentAuditItem) GetAuthorName() string {
+	if x != nil {
+		return x.AuthorName
+	}
+	return ""
+}
+
+func (x *ContentAuditItem) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+func (x *ContentAuditItem) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+type ListContentForAuditResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ContentAuditItem    `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	HasMore       bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	NextCursor    string                 `protobuf:"bytes,3,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListContentForAuditResponse) Reset() {
+	*x = ListContentForAuditResponse{}
+	mi := &file_PB_user_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListContentForAuditResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListContentForAuditResponse) ProtoMessage() {}
+
+func (x *ListContentForAuditResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListContentForAuditResponse.ProtoReflect.Descriptor instead.
+func (*ListContentForAuditResponse) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListContentForAuditResponse) GetItems() []*ContentAuditItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *ListContentForAuditResponse) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
+}
+
+func (x *ListContentForAuditResponse) GetNextCursor() string {
+	if x != nil {
+		return x.NextCursor
+	}
+	return ""
+}
+
+type AuditContentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContentId     int64                  `protobuf:"varint,1,opt,name=content_id,json=contentId,proto3" json:"content_id,omitempty"`
+	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"` // "approve" or "reject"
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"` // 审核意见（驳回时必填）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditContentRequest) Reset() {
+	*x = AuditContentRequest{}
+	mi := &file_PB_user_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditContentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditContentRequest) ProtoMessage() {}
+
+func (x *AuditContentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_user_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditContentRequest.ProtoReflect.Descriptor instead.
+func (*AuditContentRequest) Descriptor() ([]byte, []int) {
+	return file_PB_user_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *AuditContentRequest) GetContentId() int64 {
+	if x != nil {
+		return x.ContentId
+	}
+	return 0
+}
+
+func (x *AuditContentRequest) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *AuditContentRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 var File_PB_user_proto protoreflect.FileDescriptor
 
 const file_PB_user_proto_rawDesc = "" +
@@ -702,7 +1282,54 @@ const file_PB_user_proto_rawDesc = "" +
 	"SchoolInfo\x12\x1b\n" +
 	"\tschool_id\x18\x01 \x01(\x03R\bschoolId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
-	"\bprovince\x18\x03 \x01(\tR\bprovince2\xf5\x02\n" +
+	"\bprovince\x18\x03 \x01(\tR\bprovince\"^\n" +
+	"\x0eBanUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x1b\n" +
+	"\tschool_id\x18\x02 \x01(\x03R\bschoolId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"H\n" +
+	"\x10UnbanUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x1b\n" +
+	"\tschool_id\x18\x02 \x01(\x03R\bschoolId\"\xaa\x01\n" +
+	"\x10ListUsersRequest\x12\x1b\n" +
+	"\tschool_id\x18\x01 \x01(\x03R\bschoolId\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\x05R\x04role\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\x05R\x06status\x12\x18\n" +
+	"\akeyword\x18\x04 \x01(\tR\akeyword\x12\x1b\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06cursor\x18\x06 \x01(\tR\x06cursor\"s\n" +
+	"\x11ListUsersResponse\x12\"\n" +
+	"\x05users\x18\x01 \x03(\v2\f.pb.UserInfoR\x05users\x12\x19\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1f\n" +
+	"\vnext_cursor\x18\x03 \x01(\tR\n" +
+	"nextCursor\"k\n" +
+	"\x12SetUserRoleRequest\x12$\n" +
+	"\x0etarget_user_id\x18\x01 \x01(\x03R\ftargetUserId\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\x05R\x04role\x12\x1b\n" +
+	"\tschool_id\x18\x03 \x01(\x03R\bschoolId\"n\n" +
+	"\x1aListContentForAuditRequest\x12\x1b\n" +
+	"\tschool_id\x18\x01 \x01(\x03R\bschoolId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06cursor\x18\x03 \x01(\tR\x06cursor\"\xc7\x01\n" +
+	"\x10ContentAuditItem\x12\x1d\n" +
+	"\n" +
+	"content_id\x18\x01 \x01(\x03R\tcontentId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1b\n" +
+	"\tauthor_id\x18\x03 \x01(\x03R\bauthorId\x12\x1f\n" +
+	"\vauthor_name\x18\x04 \x01(\tR\n" +
+	"authorName\x12!\n" +
+	"\fcontent_type\x18\x05 \x01(\tR\vcontentType\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\x03R\tcreatedAt\"\x85\x01\n" +
+	"\x1bListContentForAuditResponse\x12*\n" +
+	"\x05items\x18\x01 \x03(\v2\x14.pb.ContentAuditItemR\x05items\x12\x19\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1f\n" +
+	"\vnext_cursor\x18\x03 \x01(\tR\n" +
+	"nextCursor\"d\n" +
+	"\x13AuditContentRequest\x12\x1d\n" +
+	"\n" +
+	"content_id\x18\x01 \x01(\x03R\tcontentId\x12\x16\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason2\xe1\x05\n" +
 	"\vUserService\x122\n" +
 	"\aWxLogin\x12\x12.pb.WxLoginRequest\x1a\x13.pb.WxLoginResponse\x12A\n" +
 	"\fRefreshToken\x12\x17.pb.RefreshTokenRequest\x1a\x18.pb.RefreshTokenResponse\x125\n" +
@@ -710,7 +1337,13 @@ const file_PB_user_proto_rawDesc = "" +
 	"BindCampus\x12\x15.pb.BindCampusRequest\x1a\x10.pb.BaseResponse\x129\n" +
 	"\x0eGetCurrentUser\x12\x19.pb.GetCurrentUserRequest\x1a\f.pb.UserInfo\x12=\n" +
 	"\x0eUpdateUserInfo\x12\x19.pb.UpdateUserInfoRequest\x1a\x10.pb.BaseResponse\x12>\n" +
-	"\vListSchools\x12\x16.pb.ListSchoolsRequest\x1a\x17.pb.ListSchoolsResponseB\n" +
+	"\vListSchools\x12\x16.pb.ListSchoolsRequest\x1a\x17.pb.ListSchoolsResponse\x12/\n" +
+	"\aBanUser\x12\x12.pb.BanUserRequest\x1a\x10.pb.BaseResponse\x123\n" +
+	"\tUnbanUser\x12\x14.pb.UnbanUserRequest\x1a\x10.pb.BaseResponse\x128\n" +
+	"\tListUsers\x12\x14.pb.ListUsersRequest\x1a\x15.pb.ListUsersResponse\x127\n" +
+	"\vSetUserRole\x12\x16.pb.SetUserRoleRequest\x1a\x10.pb.BaseResponse\x12V\n" +
+	"\x13ListContentForAudit\x12\x1e.pb.ListContentForAuditRequest\x1a\x1f.pb.ListContentForAuditResponse\x129\n" +
+	"\fAuditContent\x12\x17.pb.AuditContentRequest\x1a\x10.pb.BaseResponseB\n" +
 	"Z\b/user_pbb\x06proto3"
 
 var (
@@ -725,42 +1358,65 @@ func file_PB_user_proto_rawDescGZIP() []byte {
 	return file_PB_user_proto_rawDescData
 }
 
-var file_PB_user_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_PB_user_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_PB_user_proto_goTypes = []any{
-	(*WxLoginRequest)(nil),         // 0: pb.WxLoginRequest
-	(*WxLoginResponse)(nil),        // 1: pb.WxLoginResponse
-	(*RefreshTokenRequest)(nil),    // 2: pb.RefreshTokenRequest
-	(*RefreshTokenResponse)(nil),   // 3: pb.RefreshTokenResponse
-	(*BindCampusRequest)(nil),      // 4: pb.BindCampusRequest
-	(*GetCurrentUserRequest)(nil),  // 5: pb.GetCurrentUserRequest
-	(*UserInfo)(nil),               // 6: pb.UserInfo
-	(*UpdateUserInfoRequest)(nil),  // 7: pb.UpdateUserInfoRequest
-	(*ListSchoolsRequest)(nil),     // 8: pb.ListSchoolsRequest
-	(*ListSchoolsResponse)(nil),    // 9: pb.ListSchoolsResponse
-	(*SchoolInfo)(nil),             // 10: pb.SchoolInfo
-	(*timestamp.Timestamp)(nil),    // 11: google.protobuf.Timestamp
-	(*common_pb.BaseResponse)(nil), // 12: pb.BaseResponse
+	(*WxLoginRequest)(nil),              // 0: pb.WxLoginRequest
+	(*WxLoginResponse)(nil),             // 1: pb.WxLoginResponse
+	(*RefreshTokenRequest)(nil),         // 2: pb.RefreshTokenRequest
+	(*RefreshTokenResponse)(nil),        // 3: pb.RefreshTokenResponse
+	(*BindCampusRequest)(nil),           // 4: pb.BindCampusRequest
+	(*GetCurrentUserRequest)(nil),       // 5: pb.GetCurrentUserRequest
+	(*UserInfo)(nil),                    // 6: pb.UserInfo
+	(*UpdateUserInfoRequest)(nil),       // 7: pb.UpdateUserInfoRequest
+	(*ListSchoolsRequest)(nil),          // 8: pb.ListSchoolsRequest
+	(*ListSchoolsResponse)(nil),         // 9: pb.ListSchoolsResponse
+	(*SchoolInfo)(nil),                  // 10: pb.SchoolInfo
+	(*BanUserRequest)(nil),              // 11: pb.BanUserRequest
+	(*UnbanUserRequest)(nil),            // 12: pb.UnbanUserRequest
+	(*ListUsersRequest)(nil),            // 13: pb.ListUsersRequest
+	(*ListUsersResponse)(nil),           // 14: pb.ListUsersResponse
+	(*SetUserRoleRequest)(nil),          // 15: pb.SetUserRoleRequest
+	(*ListContentForAuditRequest)(nil),  // 16: pb.ListContentForAuditRequest
+	(*ContentAuditItem)(nil),            // 17: pb.ContentAuditItem
+	(*ListContentForAuditResponse)(nil), // 18: pb.ListContentForAuditResponse
+	(*AuditContentRequest)(nil),         // 19: pb.AuditContentRequest
+	(*timestamp.Timestamp)(nil),         // 20: google.protobuf.Timestamp
+	(*common_pb.BaseResponse)(nil),      // 21: pb.BaseResponse
 }
 var file_PB_user_proto_depIdxs = []int32{
-	11, // 0: pb.UserInfo.created_at:type_name -> google.protobuf.Timestamp
+	20, // 0: pb.UserInfo.created_at:type_name -> google.protobuf.Timestamp
 	10, // 1: pb.ListSchoolsResponse.schools:type_name -> pb.SchoolInfo
-	0,  // 2: pb.UserService.WxLogin:input_type -> pb.WxLoginRequest
-	2,  // 3: pb.UserService.RefreshToken:input_type -> pb.RefreshTokenRequest
-	4,  // 4: pb.UserService.BindCampus:input_type -> pb.BindCampusRequest
-	5,  // 5: pb.UserService.GetCurrentUser:input_type -> pb.GetCurrentUserRequest
-	7,  // 6: pb.UserService.UpdateUserInfo:input_type -> pb.UpdateUserInfoRequest
-	8,  // 7: pb.UserService.ListSchools:input_type -> pb.ListSchoolsRequest
-	1,  // 8: pb.UserService.WxLogin:output_type -> pb.WxLoginResponse
-	3,  // 9: pb.UserService.RefreshToken:output_type -> pb.RefreshTokenResponse
-	12, // 10: pb.UserService.BindCampus:output_type -> pb.BaseResponse
-	6,  // 11: pb.UserService.GetCurrentUser:output_type -> pb.UserInfo
-	12, // 12: pb.UserService.UpdateUserInfo:output_type -> pb.BaseResponse
-	9,  // 13: pb.UserService.ListSchools:output_type -> pb.ListSchoolsResponse
-	8,  // [8:14] is the sub-list for method output_type
-	2,  // [2:8] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	6,  // 2: pb.ListUsersResponse.users:type_name -> pb.UserInfo
+	17, // 3: pb.ListContentForAuditResponse.items:type_name -> pb.ContentAuditItem
+	0,  // 4: pb.UserService.WxLogin:input_type -> pb.WxLoginRequest
+	2,  // 5: pb.UserService.RefreshToken:input_type -> pb.RefreshTokenRequest
+	4,  // 6: pb.UserService.BindCampus:input_type -> pb.BindCampusRequest
+	5,  // 7: pb.UserService.GetCurrentUser:input_type -> pb.GetCurrentUserRequest
+	7,  // 8: pb.UserService.UpdateUserInfo:input_type -> pb.UpdateUserInfoRequest
+	8,  // 9: pb.UserService.ListSchools:input_type -> pb.ListSchoolsRequest
+	11, // 10: pb.UserService.BanUser:input_type -> pb.BanUserRequest
+	12, // 11: pb.UserService.UnbanUser:input_type -> pb.UnbanUserRequest
+	13, // 12: pb.UserService.ListUsers:input_type -> pb.ListUsersRequest
+	15, // 13: pb.UserService.SetUserRole:input_type -> pb.SetUserRoleRequest
+	16, // 14: pb.UserService.ListContentForAudit:input_type -> pb.ListContentForAuditRequest
+	19, // 15: pb.UserService.AuditContent:input_type -> pb.AuditContentRequest
+	1,  // 16: pb.UserService.WxLogin:output_type -> pb.WxLoginResponse
+	3,  // 17: pb.UserService.RefreshToken:output_type -> pb.RefreshTokenResponse
+	21, // 18: pb.UserService.BindCampus:output_type -> pb.BaseResponse
+	6,  // 19: pb.UserService.GetCurrentUser:output_type -> pb.UserInfo
+	21, // 20: pb.UserService.UpdateUserInfo:output_type -> pb.BaseResponse
+	9,  // 21: pb.UserService.ListSchools:output_type -> pb.ListSchoolsResponse
+	21, // 22: pb.UserService.BanUser:output_type -> pb.BaseResponse
+	21, // 23: pb.UserService.UnbanUser:output_type -> pb.BaseResponse
+	14, // 24: pb.UserService.ListUsers:output_type -> pb.ListUsersResponse
+	21, // 25: pb.UserService.SetUserRole:output_type -> pb.BaseResponse
+	18, // 26: pb.UserService.ListContentForAudit:output_type -> pb.ListContentForAuditResponse
+	21, // 27: pb.UserService.AuditContent:output_type -> pb.BaseResponse
+	16, // [16:28] is the sub-list for method output_type
+	4,  // [4:16] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_PB_user_proto_init() }
@@ -774,7 +1430,7 @@ func file_PB_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_PB_user_proto_rawDesc), len(file_PB_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

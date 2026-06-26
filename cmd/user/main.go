@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("mysql init: %v", err)
 	}
 	// Auto-migrate User Service tables
-	if err = userDB.AutoMigrate(&model.User{}, &model.School{}); err != nil {
+	if err = userDB.AutoMigrate(&model.User{}, &model.School{}, &model.AdminAuditLog{}); err != nil {
 		log.Fatalf("auto-migrate: %v", err)
 	}
 	fmt.Println("[user-service] MySQL migrated")
