@@ -73,6 +73,9 @@ func InitMessageDB() (*gorm.DB, error) { return InitDB("message") }
 // InitTaskDB 初始化任务服务数据库连接
 func InitTaskDB() (*gorm.DB, error) { return InitDB("task") }
 
+// InitFileDB 初始化文件服务数据库连接
+func InitFileDB() (*gorm.DB, error) { return InitDB("file") }
+
 // ─── 访问器（供各服务内部获取连接） ──────────────────────────────────────────
 
 // GetDB 按服务名获取已初始化的连接，未初始化时返回错误
@@ -98,6 +101,9 @@ func GetMessageDB() (*gorm.DB, error) { return GetDB("message") }
 
 // GetTaskDB 获取任务服务数据库连接
 func GetTaskDB() (*gorm.DB, error) { return GetDB("task") }
+
+// GetFileDB 获取文件服务数据库连接
+func GetFileDB() (*gorm.DB, error) { return GetDB("file") }
 
 // CloseAll 关闭所有数据库连接（用于测试或优雅停机）
 func CloseAll() error {

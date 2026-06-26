@@ -14,6 +14,7 @@ mysql:
     content: "campus_content"
     message: "campus_message"
     task: "campus_task"
+    file: "campus_file"
 
 redis:
   username: ""
@@ -44,6 +45,21 @@ etcd:
 jaeger:
   endpoint: "127.0.0.1:4318"
 
+# File Service 配置（MinIO 对象存储）
+file:
+  minio:
+    endpoint: "127.0.0.1:9000"
+    accessKey: "minio"
+    secretKey: "minio123"
+    bucket: "campus-files"
+    useSSL: false
+    publicEndpoint: "http://127.0.0.1:9000"
+  maxSizeMB: 5
+  allowedTypes:
+    - "image/jpeg"
+    - "image/png"
+    - "image/webp"
+
 wechat:
   appId: "wxa782f10bddd49b38"
   appSecret: "bed491834c49bbf9bfd66387936f176e"
@@ -69,4 +85,8 @@ service:
   task:
     name: "task-service"
     address: "127.0.0.1:50003"
+    loadBalance: false
+  file:
+    name: "file-service"
+    address: "127.0.0.1:50005"
     loadBalance: false

@@ -78,6 +78,19 @@ type GatewayConfig struct {
 	RateLimit float64 `mapstructure:"rateLimit"` // 必须加 mapstructure
 	RateBurst int     `mapstructure:"rateBurst"` // 必须加 mapstructure
 }
+type MinioConfig struct {
+	Endpoint       string `mapstructure:"endpoint"`
+	AccessKey      string `mapstructure:"accessKey"`
+	SecretKey      string `mapstructure:"secretKey"`
+	Bucket         string `mapstructure:"bucket"`
+	UseSSL         bool   `mapstructure:"useSSL"`
+	PublicEndpoint string `mapstructure:"publicEndpoint"`
+}
+type FileConfig struct {
+	Minio        MinioConfig `mapstructure:"minio"`
+	MaxSizeMB    int         `mapstructure:"maxSizeMB"`
+	AllowedTypes []string    `mapstructure:"allowedTypes"`
+}
 type Config struct {
 	Service      map[string]ServiceConfig `mapstructure:"service"`
 	Mysql        MysqlConfig              `mapstructure:"mysql"`
@@ -89,6 +102,7 @@ type Config struct {
 	Wechat       WechatConfig             `mapstructure:"wechat"`
 	Gateway      GatewayConfig            `mapstructure:"gateway"`
 	Elasticsearch ElasticsearchConfig      `mapstructure:"elasticsearch"`
+	File         FileConfig                `mapstructure:"file"`
 }
 
 func InitConfig(configPath string) {
