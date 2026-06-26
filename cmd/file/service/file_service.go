@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -123,6 +124,50 @@ func Upload(ctx context.Context, schoolID, uploaderID int64, category string, fi
 		ContentType: contentType,
 	}, nil
 }
+
+// ─── gRPC RPC 实现 ────────────────────────────────────────────────────────
+
+func (s *FileServiceServer) Upload(ctx context.Context, req *file_pb.UploadRequest) (*file_pb.UploadResponse, error) {
+	if req.SchoolId <= 0 || req.UserId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "school_id/user_id 必须为正数")
+	}
+	if len(req.Data) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "文件内容为空")
+	}
+
+	contentType := req.ContentType
+	if contentType == "" {
+		contentType = http.DetectContentType(req.Data)
+	}
+
+	// 构造 multipart.File 接口（通过内存读取）
+	file := bytes.NewReader(req.Data)
+	// 打包成 multipart.File 格式（简化：直接包装为 io.ReadSeeker）
+	fileSeeker := &readerSeeker{Reader: file}
+	header := &multipart.FileHeader{
+		Filename: req.Filename,
+		Size:     int64(len(req.Data)),
+	}
+
+	result, err := Upload(ctx, req.SchoolId, req.UserId, req.Category, fileSeeker, header)
+	if err != nil {
+		return nil, err
+	}
+
+	return &file_pb.UploadResponse{
+		FileId:      result.FileID,
+		Url:         result.URL,
+		SizeBytes:   result.SizeBytes,
+		ContentType: result.ContentType,
+	}, nil
+}
+
+// readerSeeker 实现 multipart.File 接口（用于 Upload 函数）
+type readerSeeker struct {
+	*bytes.Reader
+}
+
+func (r *readerSeeker) Close() error { return nil }
 
 // ─── gRPC RPC 实现（GetFile / DeleteFile） ─────────────────────────────────
 

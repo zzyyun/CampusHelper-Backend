@@ -52,6 +52,11 @@ func main() {
 		log.Fatalf("task client init: %v", err)
 	}
 	fmt.Println("[gateway] task-service client connected")
+	if err = client.InitFileClient(); err != nil {
+		log.Fatalf("file client init: %v", err)
+	}
+	fmt.Println("[gateway] file-service client connected")
+
 
 
 

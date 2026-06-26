@@ -20,6 +20,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	FileService_Upload_FullMethodName     = "/pb.FileService/Upload"
 	FileService_GetFile_FullMethodName    = "/pb.FileService/GetFile"
 	FileService_DeleteFile_FullMethodName = "/pb.FileService/DeleteFile"
 )
@@ -33,6 +34,8 @@ const (
 // 对应 docs/file-service-prd.md v1.0
 // =====================================================
 type FileServiceClient interface {
+	// 上传文件（接收字节流，由 Gateway 转发）
+	Upload(ctx context.Context, in *UploadRequest, opts ...grpc.CallOption) (*UploadResponse, error)
 	// 查询文件元数据（仅上传者可查询）
 	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*FileInfo, error)
 	// 软删除文件（仅上传者）
@@ -45,6 +48,16 @@ type fileServiceClient struct {
 
 func NewFileServiceClient(cc grpc.ClientConnInterface) FileServiceClient {
 	return &fileServiceClient{cc}
+}
+
+func (c *fileServiceClient) Upload(ctx context.Context, in *UploadRequest, opts ...grpc.CallOption) (*UploadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UploadResponse)
+	err := c.cc.Invoke(ctx, FileService_Upload_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *fileServiceClient) GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*FileInfo, error) {
@@ -76,6 +89,8 @@ func (c *fileServiceClient) DeleteFile(ctx context.Context, in *DeleteFileReques
 // 对应 docs/file-service-prd.md v1.0
 // =====================================================
 type FileServiceServer interface {
+	// 上传文件（接收字节流，由 Gateway 转发）
+	Upload(context.Context, *UploadRequest) (*UploadResponse, error)
 	// 查询文件元数据（仅上传者可查询）
 	GetFile(context.Context, *GetFileRequest) (*FileInfo, error)
 	// 软删除文件（仅上传者）
@@ -90,6 +105,9 @@ type FileServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedFileServiceServer struct{}
 
+func (UnimplementedFileServiceServer) Upload(context.Context, *UploadRequest) (*UploadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Upload not implemented")
+}
 func (UnimplementedFileServiceServer) GetFile(context.Context, *GetFileRequest) (*FileInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetFile not implemented")
 }
@@ -115,6 +133,24 @@ func RegisterFileServiceServer(s grpc.ServiceRegistrar, srv FileServiceServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&FileService_ServiceDesc, srv)
+}
+
+func _FileService_Upload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UploadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileServiceServer).Upload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_Upload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).Upload(ctx, req.(*UploadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _FileService_GetFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -160,6 +196,10 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "pb.FileService",
 	HandlerType: (*FileServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Upload",
+			Handler:    _FileService_Upload_Handler,
+		},
 		{
 			MethodName: "GetFile",
 			Handler:    _FileService_GetFile_Handler,
