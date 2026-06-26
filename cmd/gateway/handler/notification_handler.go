@@ -30,7 +30,7 @@ func ListNotifications(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -41,6 +41,8 @@ func ListNotifications(c *gin.Context) {
 	}
 
 	resp, err := client.MessageClient.ListNotifications(ctx, &message_pb.ListNotificationsRequest{
+		SchoolId: sid,
+		UserId:   uid,
 		Cursor:   req.Cursor,
 		PageSize: pageSize,
 		Type:     req.Type,
@@ -57,12 +59,15 @@ func ListNotifications(c *gin.Context) {
 
 // UnreadCount 获取当前用户未读通知数。
 func UnreadCount(c *gin.Context) {
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.MessageClient.UnreadCount(ctx, &message_pb.UnreadCountRequest{})
+	resp, err := client.MessageClient.UnreadCount(ctx, &message_pb.UnreadCountRequest{
+		SchoolId: sid,
+		UserId:   uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
@@ -82,12 +87,15 @@ func MarkRead(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, _, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.MessageClient.MarkRead(ctx, &message_pb.MarkReadRequest{Id: id})
+	resp, err := client.MessageClient.MarkRead(ctx, &message_pb.MarkReadRequest{
+		Id:     id,
+		UserId: uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
@@ -108,12 +116,15 @@ func MarkRead(c *gin.Context) {
 
 // MarkAllRead 标记全部通知为已读。
 func MarkAllRead(c *gin.Context) {
-	ctx, ok := authCtx(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.MessageClient.MarkAllRead(ctx, &message_pb.MarkAllReadRequest{})
+	resp, err := client.MessageClient.MarkAllRead(ctx, &message_pb.MarkAllReadRequest{
+		SchoolId: sid,
+		UserId:   uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
@@ -141,12 +152,15 @@ func DeleteNotification(c *gin.Context) {
 		return
 	}
 
-	ctx, ok := authCtx(c)
+	ctx, uid, _, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
 
-	resp, err := client.MessageClient.DeleteNotification(ctx, &message_pb.DeleteNotificationRequest{Id: id})
+	resp, err := client.MessageClient.DeleteNotification(ctx, &message_pb.DeleteNotificationRequest{
+		Id:     id,
+		UserId: uid,
+	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)
 		return
