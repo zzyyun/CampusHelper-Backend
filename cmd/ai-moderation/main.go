@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	ai_moderation_pb "go_projects/praProject1/PB/pb/ai_moderation_pb"
 	"go_projects/praProject1/cmd/ai-moderation/metrics"
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/internal/ai_moderation"
@@ -118,10 +119,11 @@ func main() {
 	// 反射（便于 grpcurl 调试）
 	reflection.Register(grpcServer)
 
-	// ModerateText 服务注册（待 task-040 生成 pb 后替换为真实 Register）
-	// 当前 task-039 阶段：仅提供骨架，proto 接入在 task-040 完成
-	// ai_moderation.RegisterAIServiceServer 将在 task-040 proto 生成后启用
-	log.Printf("[ai-moderation] gRPC server skeleton ready (ModerateText pending proto #91)")
+	// 注册 AI Moderation gRPC 服务
+	aiService := ai_moderation.NewServiceWithMode(loader, "mock", 0)
+	ai_moderation_pb.RegisterAIModerationServiceServer(grpcServer, aiService)
+	log.Printf("[ai-moderation] AI Moderation Service registered (mode=%s, version=%s)",
+		"mock", modelCfg.ModelVersion)
 
 	// 注册到 etcd
 	serviceName := config.Conf.Service["ai-moderation"].Name
