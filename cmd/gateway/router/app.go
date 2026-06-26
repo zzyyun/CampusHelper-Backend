@@ -87,7 +87,31 @@ func NewRouter() *gin.Engine {
 		}
 	}
 
-	// Content Service – authenticated routes (Issue #22, #41)
+	
+		// File Service – routes (Issue #79)
+		// 读路由：GetFile — JWT 鉴权，不强绑 school
+		files := v1.Group("/files", middleware.JWTAuth())
+		{
+			files.POST("/upload", handler.UploadFile)
+			files.GET("/:id", handler.GetFile)
+
+			// 写路由：JWT + 学校绑定
+			write := files.Group("", middleware.RequireSchoolBound())
+			{
+				write.DELETE("/:id", handler.DeleteFile)
+			}
+		}
+		{
+			files.GET("/:id", handler.GetFile)
+
+			// 写路由：JWT + 学校绑定
+			write := files.Group("", middleware.RequireSchoolBound())
+			{
+				write.DELETE("/:id", handler.DeleteFile)
+			}
+		}
+
+// Content Service – authenticated routes (Issue #22, #41)
 	//   12 个接口：帖子 CRUD / 评论 / 回复 / 点赞 / 搜索
 	//   - 读路由（List/Get/Search/ListComments）：仅 JWT，未绑定学校也能浏览
 	//   - 写路由（Create/Update/Delete/Like/Comment）：JWT + RequireSchoolBound

@@ -10,6 +10,8 @@ import "PB/common.proto";
 // 对应 docs/file-service-prd.md v1.0
 // =====================================================
 service FileService {
+  // 上传文件（接收字节流，由 Gateway 转发）
+  rpc Upload (UploadRequest) returns (UploadResponse);
   // 查询文件元数据（仅上传者可查询）
   rpc GetFile (GetFileRequest) returns (FileInfo);
   // 软删除文件（仅上传者）
@@ -38,7 +40,16 @@ message DeleteFileRequest {
   int64 user_id = 2;
 }
 
-// ─── 上传响应消息（供 Gateway handler 复用）───────────────────────
+// ─── 上传 ────────────────────────────────────────────────────────
+
+message UploadRequest {
+  int64 school_id = 1;
+  int64 user_id = 2;
+  string category = 3;        // avatar / post / task / other
+  bytes data = 4;             // 文件内容（上限 5MB）
+  string filename = 5;        // 原始文件名
+  string content_type = 6;    // MIME 类型
+}
 
 message UploadResponse {
   int64 file_id = 1;
