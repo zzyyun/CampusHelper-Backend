@@ -16,7 +16,6 @@ import (
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
-	"go_projects/praProject1/pkg/mq"
 	"go_projects/praProject1/pkg/tracer"
 
 	task_pb "go_projects/praProject1/PB/pb/task_pb"
@@ -72,10 +71,10 @@ func main() {
 	mqAddr := fmt.Sprintf("amqp://%s:%s@%s/",
 		config.Conf.RabbitMQ.Username, config.Conf.RabbitMQ.Password,
 		config.Conf.RabbitMQ.Address)
-	mqPublisher := initPublisher(mqAddr)
+	task_service.InitMQ(mqAddr)
 
 	// 启动自动过期 goroutine
-	go startExpiryLoop()
+	go startExpiryLoop(task_service.DoExpire)
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
@@ -83,8 +82,6 @@ func main() {
 		}
 	}()
 
-	// 占位：防止 mqPublisher 被 GC
-	_ = mqPublisher
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -96,24 +93,13 @@ func main() {
 	fmt.Println("[task-service] 已关闭")
 }
 
-func initPublisher(mqAddr string) *mq.Publisher {
-	p := mq.NewPublisher(mqAddr, "task.events")
-	log.Println("[task-service] MQ Publisher 初始化完成（队列: task.events）")
-	return p
-}
-
-func startExpiryLoop() {
+func startExpiryLoop(expireFn func()) {
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
 
-	doExpire()
+	expireFn()
 
 	for range ticker.C {
-		doExpire()
+		expireFn()
 	}
-}
-
-func doExpire() {
-	// 占位：后续在 task-026 中实现 repo.ExpireOpenTasks() 调用
-	log.Println("[task-service] 自动过期检查完成")
 }
