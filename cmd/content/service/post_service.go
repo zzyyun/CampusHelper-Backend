@@ -64,6 +64,11 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		return nil, &SensitiveWordErrorType{Hits: hits}
 	}
 
+	// ── 1.5 AI 智能审核（v3.0 新增）───────────────────────────────────
+	// DFA 通过后 → 同步调用 ai-moderation（800ms 超时）→ 决策帖子状态
+	// AI 不可用时降级到仅 DFA 模式（fallback）
+	aiDecision := callAIModeration(ctx, req.Title+"\n"+req.Content, 0) // postID 暂未生成
+
 	// ── 2. 序列化图片数组 ──────────────────────────────────────────────
 	imagesJSON := "[]"
 	if len(req.Images) > 0 {
@@ -88,6 +93,8 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		expiredAt = &t
 	}
 
+	// 根据 AI 决策设置初始状态（v3.0 改造点）
+	aiStatus, _ := decidePostStatus(aiDecision)
 	post := &content_db.Post{
 		ID:         postID,
 		SchoolID:   req.SchoolId,
@@ -96,7 +103,7 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		Title:      req.Title,
 		Content:    req.Content,
 		ImagesJSON: imagesJSON,
-		Status:     content_db.PostStatusPending, // 默认进入审核中
+		Status:     aiStatus, // 由 AI 决策决定（PASS→published, REVIEW→pending, BLOCK→rejected）
 		ExpiredAt:  expiredAt,
 	}
 
@@ -120,14 +127,23 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 		return nil, fmt.Errorf("create post: %w", err)
 	}
 
+	// ── 5.5 写入 AI 审计日志（v3.0 新增）────────────────────────────
+	// 即使 AI 不可用（DEGRADED）也记录，便于审计
+	traceID := extractTraceID(ctx)
+	recordAIAuditLog(post.ID, aiDecision, req.Title+"\n"+req.Content, traceID)
+
 	// 链路追踪由 pkg/middleware/tracing 拦截器统一注入 ctx，
 	// 此处不再重复调用 contextx.SetTraceID（否则结果 ctx 被丢弃，属于死代码）。
 	// 如需在响应中回带 trace_id，请在 gRPC 响应 Header 中由统一拦截器写入。
 
 	return &pb.CreatePostResponse{
-		PostId:    post.ID,
-		Status:    pb.PostStatus(post.Status),
-		CreatedAt: post.CreatedAt.Unix(),
+		PostId:        post.ID,
+		Status:        pb.PostStatus(post.Status),
+		CreatedAt:     post.CreatedAt.Unix(),
+		AiResult:      aiDecision.AIResult,
+		AiConfidence:  aiDecision.Confidence,
+		AiCategories:  aiDecision.Categories,
+		AiFallbackUsed: aiDecision.FallbackUsed,
 	}, nil
 }
 

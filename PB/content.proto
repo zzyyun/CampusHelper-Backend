@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package pb;
-option go_package = "/content_pb";
+option go_package = "go_projects/praProject1/PB/pb/content_pb";
 
 import "PB/common.proto";
 
@@ -208,6 +208,18 @@ message CreatePostResponse {
   int64 post_id = 1;
   PostStatus status = 2;
   int64 created_at = 3;
+
+  // ── AI 审核结果（v3.0 新增）───────────────────────────────────
+  // AIResult 枚举值：
+  //   0 = PASS, 1 = REVIEW, 2 = BLOCK, 3 = DEGRADED
+  // 与 ai_moderation.proto ModerateTextResponse.Result 一致
+  int32 ai_result = 10;
+  // AI 置信度（0.0-1.0）
+  float ai_confidence = 11;
+  // AI 命中类别（如 ["涉政", "广告引流"]）
+  repeated string ai_categories = 12;
+  // 是否走降级逻辑（true = AI 不可用/超时/熔断）
+  bool ai_fallback_used = 13;
 }
 
 message GetPostRequest {

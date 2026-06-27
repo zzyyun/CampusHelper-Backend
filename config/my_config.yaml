@@ -90,3 +90,18 @@ service:
     name: "file-service"
     address: "127.0.0.1:50005"
     loadBalance: false
+  ai-moderation:
+    name: "ai-moderation"
+    address: "127.0.0.1:50061"
+    loadBalance: false
+
+# AI Moderation 服务配置（v3.0 智能审核）
+aiModeration:
+  modelPath: "/models/moderation_v1.onnx"
+  modelVersion: "v1.0-mock"
+  modelHash: ""
+  enabled: false  # mock 模式（true=真实 ONNX 推理, false=固定返回 PASS）
+  timeoutMs: 800
+  syncTimeoutMs: 800
+  intraOpNumThreads: 4
+  enableCpuMemArena: true
