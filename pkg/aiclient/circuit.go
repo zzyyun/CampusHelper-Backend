@@ -89,19 +89,18 @@ func NewCircuitBreaker(cfg CircuitConfig) *CircuitBreaker {
 			cb.state = to.String()
 			cb.metrics.StateChanges++
 			cb.mu.Unlock()
+			// 同步更新 Prometheus 指标
+			UpdateCircuitState(to.String())
 		},
 	}
 
 	cb.cb = gobreaker.NewCircuitBreaker(settings)
 	cb.state = gobreaker.StateClosed.String()
+	UpdateCircuitState(cb.state) // 初始化 metric
 	return cb
 }
 
 // Execute 在熔断器保护下执行 fn
-//
-// 返回：
-//   - fn 的返回值（任意类型）
-//   - error: 熔断器开启时返回 ErrCircuitOpen
 func (c *CircuitBreaker) Execute(fn func() (interface{}, error)) (interface{}, error) {
 	c.mu.Lock()
 	c.metrics.CallsTotal++
@@ -111,7 +110,6 @@ func (c *CircuitBreaker) Execute(fn func() (interface{}, error)) (interface{}, e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
-		// gobreaker.ErrOpenState 表示熔断中
 		if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
 			c.metrics.FailuresTotal++
 			return nil, ErrAIServiceUnavailable
@@ -141,7 +139,6 @@ func (c *CircuitBreaker) State() string {
 func (c *CircuitBreaker) GetMetrics() *CircuitMetrics {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	// 复制一份避免外部修改
 	return &CircuitMetrics{
 		CallsTotal:     c.metrics.CallsTotal,
 		SuccessesTotal: c.metrics.SuccessesTotal,
