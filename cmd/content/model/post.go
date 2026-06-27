@@ -19,6 +19,7 @@ const (
 	PostStatusRejected    PostStatus = 5 // 已拒绝
 	PostStatusRetrieved   PostStatus = 6 // 失物已认领（失物招领专用）
 	PostStatusSold        PostStatus = 7 // 二手已售出（二手交易专用）
+	PostStatusTakenDownPending PostStatus = 8 // 异步补判违规，宽限期内（v3.0 AI 审核新增）
 )
 
 // allowedTransitions 定义状态机合法转移图。
@@ -30,10 +31,15 @@ var allowedTransitions = map[PostStatus]map[PostStatus]struct{}{
 		PostStatusRejected:  {}, // 审核拒绝
 	},
 	PostStatusPublished: {
-		PostStatusClosed:    {}, // 违规下架
-		PostStatusExpired:   {}, // 自然过期
-		PostStatusRetrieved: {}, // 失物招领 → 已认领
-		PostStatusSold:      {}, // 二手交易 → 已售出
+		PostStatusClosed:           {}, // 违规下架
+		PostStatusExpired:          {}, // 自然过期
+		PostStatusRetrieved:        {}, // 失物招领 → 已认领
+		PostStatusSold:             {}, // 二手交易 → 已售出
+		PostStatusTakenDownPending: {}, // v3.0 AI 异步补判违规
+	},
+	PostStatusTakenDownPending: {
+		PostStatusClosed:    {}, // 宽限期结束，正式下架
+		PostStatusPublished: {}, // 申诉成功，恢复发布
 	},
 }
 
