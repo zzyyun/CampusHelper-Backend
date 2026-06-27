@@ -1,0 +1,312 @@
+# 校园互助平台 - 完整微服务编排
+# 包含：6 个微服务（gateway/user/content/task/message/file）+ etcd + RabbitMQ + MinIO + ES
+# 不含：MySQL/Redis（使用阿里云云数据库）
+#
+# 用法：
+#   cd deployments/docker
+#   docker compose -f campus-docker-compose.yaml up -d --build
+#
+# 验证：
+#   docker compose -f campus-docker-compose.yaml ps        # 查看健康状态
+#   curl http://127.0.0.1:50000/health                    # gateway health
+#   ./scripts/verify.sh                                   # 主链路业务验证
+#
+# 停止 / 清理：
+#   docker compose -f campus-docker-compose.yaml down          # 仅停容器（保留数据卷）
+#   docker compose -f campus-docker-compose.yaml down -v       # 同时删除数据卷（彻底清空）
+#
+# ECS 资源分配（4 核 8G 经济型 e 系列）:
+#   6 个 Go 服务   : 0.5 核 / 256-512M
+#   etcd          : 0.2 核 / 128M
+#   RabbitMQ      : 0.5 核 / 512M
+#   MinIO         : 0.5 核 / 512M
+#   ES            : 0.5 核 / 1G
+#   系统预留       : ~1G
+
+services:
+  # ==================== 基础设施 ====================
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.11
+    container_name: campus-etcd
+    command:
+      - 'etcd'
+      - '--advertise-client-urls=http://0.0.0.0:2379'
+      - '--listen-client-urls=http://0.0.0.0:2379'
+      - '--data-dir=/etcd-data'
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=periodic
+      - ETCD_AUTO_COMPACTION_RETENTION=1
+      - ETCD_QUOTA_BACKEND_BYTES=8589934592
+    volumes:
+      - etcd-data:/etcd-data
+    ports:
+      - "2379:2379"     # client (代码用)
+      - "2380:2380"     # peer
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: always
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: campus-rabbitmq
+    hostname: campus-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=yun
+      - RABBITMQ_DEFAULT_PASS=123456
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - rabbitmq-conf:/etc/rabbitmq
+    ports:
+      - "5672:5672"      # AMQP (代码用)
+      - "15672:15672"    # 管理界面 (可选)
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+
+  minio:
+    image: minio/minio:latest
+    container_name: campus-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # Web Console
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: always
+
+  es:
+    build:
+      context: ./es-with-ik
+    container_name: campus-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"     # REST API
+      - "9300:9300"     # 节点间通信
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: always
+
+  # ==================== 业务微服务 ====================
+  # 镜像由 build/docker/{service}.Dockerfile 构建
+  # 启动顺序：依赖 etcd 健康后启动；其他服务互不依赖
+  # env_file 引用 ECS 上 /opt/campus/.env（不入仓）
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: build/docker/gateway.Dockerfile
+    container_name: campus-gateway
+    env_file:
+      - /opt/campus/.env
+    environment:
+      - SERVICE_NAME=gateway
+    ports:
+      - "50000:50000"   # HTTP API（公网入口）
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+    restart: always
+
+  user:
+    build:
+      context: ../..
+      dockerfile: build/docker/user.Dockerfile
+    container_name: campus-user
+    env_file:
+      - /opt/campus/.env
+    environment:
+      - SERVICE_NAME=user
+    ports:
+      - "50001:50001"   # gRPC（仅内网）
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 384M
+    restart: always
+
+  content:
+    build:
+      context: ../..
+      dockerfile: build/docker/content.Dockerfile
+    container_name: campus-content
+    env_file:
+      - /opt/campus/.env
+    environment:
+      - SERVICE_NAME=content
+    ports:
+      - "50002:50002"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      es:
+        condition: service_healthy
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: always
+
+  task:
+    build:
+      context: ../..
+      dockerfile: build/docker/task.Dockerfile
+    container_name: campus-task
+    env_file:
+      - /opt/campus/.env
+    environment:
+      - SERVICE_NAME=task
+    ports:
+      - "50003:50003"
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    restart: always
+
+  message:
+    build:
+      context: ../..
+      dockerfile: build/docker/message.Dockerfile
+    container_name: campus-message
+    env_file:
+      - /opt/campus/.env
+    environment:
+      - SERVICE_NAME=message
+    ports:
+      - "50004:50004"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 384M
+    restart: always
+
+  file:
+    build:
+      context: ../..
+      dockerfile: build/docker/file.Dockerfile
+    container_name: campus-file
+    env_file:
+      - /opt/campus/.env
+    environment:
+      - SERVICE_NAME=file
+    ports:
+      - "50005:50005"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - campus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+    restart: always
+
+volumes:
+  etcd-data:
+    name: campus-etcd-data
+  rabbitmq-data:
+    name: campus-rabbitmq-data
+  rabbitmq-conf:
+    name: campus-rabbitmq-conf
+  minio-data:
+    name: campus-minio-data
+  es-data:
+    name: campus-es-data
+
+networks:
+  campus-net:
+    name: campus-net
