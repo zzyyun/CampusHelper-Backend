@@ -33,7 +33,7 @@ FROM ${BASE_IMAGE}
 
 # alpine 基础镜像需要 ca-certificates（distroless 内置 TLS 证书）
 RUN if command -v apk >/dev/null 2>&1; then \
-      apk add --no-cache ca-certificates; \
+      apk add --no-cache ca-certificates netcat-openbsd; \
     fi
 
 COPY --from=builder /out/app /app
