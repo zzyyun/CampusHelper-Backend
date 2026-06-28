@@ -1,0 +1,102 @@
+# CampusHelper-Backend 阿里云 ACR 部署流水线
+# 触发：push main → 矩阵构建 6 个微服务镜像 → 推送到阿里云 ACR
+# 文档：https://github.com/zzyyun/CampusHelper-Backend/issues/115
+
+name: Build & Push to ACR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # 允许手动触发（重跑/回滚）
+
+# 全局环境变量（所有 job 共享）
+env:
+  # ACR Registry 来自 Secrets（格式：crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/campus_sends/campus）
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  # 国内可访问的基础镜像（gcr.io 在国内不通，alpine 是稳定替代）
+  BASE_IMAGE: alpine:3.19
+  RUNTIME_USER: nobody
+
+jobs:
+  build-and-push:
+    name: Build ${{ matrix.service }} & push to ACR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30    # 6 个服务 + buildx 单服务最长 5 分钟
+    strategy:
+      fail-fast: false     # 一个服务失败不影响其他 5 个并发构建
+      matrix:
+        service: [gateway, user, content, task, message, file]
+
+    steps:
+      # ── 1. 检出代码 ───────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. 安装 Go（用于 build 阶段，但实际只触发 module download）─────────
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache: true
+
+      # ── 3. 启用 Docker Buildx（支持多平台、缓存、push）────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 4. 缓存 Go module 依赖（加速下次 build）───────────────────────────
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      # ── 5. 登录阿里云 ACR ──────────────────────────────────────────────────
+      # 需要 GitHub Secrets: ACR_REGISTRY / ACR_USERNAME / ACR_PASSWORD
+      # 配置位置：仓库 Settings → Secrets and variables → Actions
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      # ── 6. 生成短 SHA 作为镜像 tag 后缀 ────────────────────────────────────
+      - name: Generate short SHA
+        id: short_sha
+        run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # ── 7. 构建镜像 + 推送到 ACR ───────────────────────────────────────────
+      # ACR 个人版用单 repo 多 tag 模式：campus_sends/campus:v1.0-{service}-{tag}
+      # - :v1.0-{service}-{sha}    每次 commit 唯一
+      # - :v1.0-{service}-latest   滚动覆盖（指向最新 commit）
+      # 缓存：GitHub Actions 内置 GHA cache（按 service 隔离）
+      - name: Build & Push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./build/docker/${{ matrix.service }}.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-${{ steps.short_sha.outputs.value }}
+            ${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            RUNTIME_USER=${{ env.RUNTIME_USER }}
+          # Docker layer 缓存（按 service 隔离 key）
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # 关闭 provenance/SBOM（ACR 个人版兼容性更好）
+          provenance: false
+          sbom: false
+
+      # ── 8. 输出最终镜像地址（方便复制到 ECS 部署）────────────────────────
+      - name: Print image tag
+        run: |
+          echo "### ${{ matrix.service }} image pushed ###"
+          echo "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-${{ steps.short_sha.outputs.value }}"
+          echo "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest"
