@@ -1,0 +1,117 @@
+# CampusHelper ECS 配置模板（不入仓，使用时 sed 替换）
+#
+# 用法：
+#   1. 复制本模板到 config/my_config.yaml
+#   2. 用 sed 替换占位符（见 docs/runbook/110-deploy-campus-compose.md）
+#   3. 验证：python3 -c "import yaml; yaml.safe_load(open('config/my_config.yaml'))"
+#
+# ECS 部署时，本文件覆盖本地 config/my_config.yaml（因本地版用 127.0.0.1 不可用）
+#
+# 占位符说明：
+#   __RDS_MYSQL_HOST__   阿里云 RDS MySQL 内网域名
+#   __RDS_MYSQL_PASS__   RDS root 密码
+#   __TAIR_REDIS_HOST__  阿里云 Tair Redis 内网域名
+#   __WECHAT_APP_ID__    微信小程序 AppID
+#   __WECHAT_APP_SECRET__ 微信小程序 AppSecret
+
+mysql:
+  username: "root"
+  password: "__RDS_MYSQL_PASS__"
+  host: "__RDS_MYSQL_HOST__"
+  port: "3306"
+  userDatabase: "campus_user"
+  contentDatabase: "campus_content"
+  charset: "utf8mb4"
+  driver: "mysql"
+  databases:
+    user: "campus_user"
+    content: "campus_content"
+    message: "campus_message"
+    task: "campus_task"
+    file: "campus_file"
+
+redis:
+  username: ""
+  password: ""
+  address: "__TAIR_REDIS_HOST__:6379"
+
+jwt:
+  authKey: "campus_help_secret_2026"
+  accessExpireH: 24
+  refreshExpireH: 168
+
+rabbitmq:
+  username: "yun"
+  password: "123456"
+  address: "campus-rabbitmq:5672"
+
+elasticsearch:
+  addresses:
+    - "http://campus-es:9200"
+  index: "campus_posts"
+
+etcd:
+  address:
+    - "campus-etcd:2379"
+
+jaeger:
+  endpoint: "127.0.0.1:4318"
+
+file:
+  minio:
+    endpoint: "campus-minio:9000"
+    accessKey: "minio"
+    secretKey: "minio123"
+    bucket: "campus-files"
+    useSSL: false
+    publicEndpoint: "http://campus-minio:9000"
+  maxSizeMB: 5
+  allowedTypes:
+    - "image/jpeg"
+    - "image/png"
+    - "image/webp"
+
+wechat:
+  appId: "__WECHAT_APP_ID__"
+  appSecret: "__WECHAT_APP_SECRET__"
+
+gateway:
+  address: "0.0.0.0:50000"
+  rateLimit: 100
+  rateBurst: 200
+
+service:
+  user:
+    name: "user-service"
+    address: "campus-user:50001"
+    loadBalance: false
+  content:
+    name: "content-service"
+    address: "campus-content:50002"
+    loadBalance: true
+  message:
+    name: "message-service"
+    address: "campus-message:50004"
+    loadBalance: false
+  task:
+    name: "task-service"
+    address: "campus-task:50003"
+    loadBalance: false
+  file:
+    name: "file-service"
+    address: "campus-file:50005"
+    loadBalance: false
+  ai-moderation:
+    name: "ai-moderation"
+    address: "127.0.0.1:50061"
+    loadBalance: false
+
+aiModeration:
+  modelPath: "/models/moderation_v1.0.onnx"
+  modelVersion: "v1.0-mock"
+  modelHash: ""
+  enabled: false
+  timeoutMs: 800
+  syncTimeoutMs: 800
+  intraOpNumThreads: 4
+  enableCpuMemArena: true
