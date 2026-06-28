@@ -11,6 +11,7 @@
 #   - BASE_IMAGE=alpine:3.19 替代 gcr.io/distroless/static-debian12:nonroot
 #   - RUNTIME_USER=nobody 替代 nonroot:nonroot
 # 镜像体积会大 ~5-8MB（alpine 基础层），但国内可稳定拉取。
+# docker build --build-arg BASE_IMAGE=alpine:3.19 --build-arg RUNTIME_USER=nobody -f build/docker/gateway.Dockerfile -t campus/gateway:tag .
 
 set -e
 
