@@ -32,8 +32,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM ${BASE_IMAGE}
 
 # alpine 基础镜像需要 ca-certificates（distroless 内置 TLS 证书）
+# 同时装 netcat-openbsd 用于 docker compose healthcheck（busybox nc 在 healthcheck 上下文不稳定）
 RUN if command -v apk >/dev/null 2>&1; then \
-      apk add --no-cache ca-certificates; \
+      apk add --no-cache ca-certificates netcat-openbsd; \
     fi
 
 COPY --from=builder /out/app /app
