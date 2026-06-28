@@ -23,7 +23,7 @@ type AdminAuditLog struct {
 	OperatorID int64       `gorm:"column:operator_id;index;not null"   json:"operator_id"` // 操作人 user_id
 	TargetID   int64       `gorm:"column:target_id;not null"           json:"target_id"`   // 目标 user_id 或 content_id
 	Action     AuditAction `gorm:"size:32;not null;index"              json:"action"`      // 操作类型
-	Detail     string      `gorm:"type:text;default:''"                json:"detail"`     // JSON 格式详情
+	Detail     string      `gorm:"type:text"                         json:"detail"`     // JSON 格式详情，TEXT 列禁止 DEFAULT
 	CreatedAt  time.Time   `json:"created_at"`
 }
 
