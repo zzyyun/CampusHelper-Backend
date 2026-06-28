@@ -243,6 +243,8 @@ services:
     depends_on:
       etcd:
         condition: service_healthy
+      es:
+        condition: service_healthy
     healthcheck:
       # nc 检查端口：gRPC 服务用 nc -z，gateway 用 curl
       test: ["CMD", "nc", "-z", "localhost", "50002"]
@@ -250,8 +252,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-      es:
-        condition: service_healthy
     networks:
       - campus-net
     deploy:
@@ -317,6 +317,8 @@ services:
     depends_on:
       etcd:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       # nc 检查端口：gRPC 服务用 nc -z，gateway 用 curl
       test: ["CMD", "nc", "-z", "localhost", "50004"]
@@ -324,8 +326,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-      rabbitmq:
-        condition: service_healthy
     networks:
       - campus-net
     deploy:
@@ -355,6 +355,8 @@ services:
     depends_on:
       etcd:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       # nc 检查端口：gRPC 服务用 nc -z，gateway 用 curl
       test: ["CMD", "nc", "-z", "localhost", "50005"]
@@ -362,8 +364,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-      minio:
-        condition: service_healthy
     networks:
       - campus-net
     deploy:
