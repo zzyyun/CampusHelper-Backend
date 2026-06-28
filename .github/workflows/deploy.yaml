@@ -43,20 +43,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── 4. 缓存 Go module 依赖（加速下次 build）───────────────────────────
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      # ── 5. 登录阿里云 ACR ──────────────────────────────────────────────────
+      # ── 4. 登录阿里云 ACR ──────────────────────────────────────────────────
       # 需要 GitHub Secrets: ACR_REGISTRY / ACR_USERNAME / ACR_PASSWORD
       # 配置位置：仓库 Settings → Secrets and variables → Actions
+      # 注：Go module 缓存由 setup-go@v5 的 cache: true 自动处理（~/go/pkg/mod + ~/.cache/go-build），
+      #     无需再单独用 actions/cache。
       - name: Login to Aliyun ACR
         uses: docker/login-action@v3
         with:
@@ -64,12 +55,12 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # ── 6. 生成短 SHA 作为镜像 tag 后缀 ────────────────────────────────────
+      # ── 5. 生成短 SHA 作为镜像 tag 后缀 ────────────────────────────────────
       - name: Generate short SHA
         id: short_sha
         run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # ── 7. 构建镜像 + 推送到 ACR ───────────────────────────────────────────
+      # ── 6. 构建镜像 + 推送到 ACR ───────────────────────────────────────────
       # ACR 个人版用单 repo 多 tag 模式：campus_sends/campus:v1.0-{service}-{tag}
       # - :v1.0-{service}-{sha}    每次 commit 唯一
       # - :v1.0-{service}-latest   滚动覆盖（指向最新 commit）
@@ -94,7 +85,7 @@ jobs:
           provenance: false
           sbom: false
 
-      # ── 8. 输出最终镜像地址（方便复制到 ECS 部署）────────────────────────
+      # ── 7. 输出最终镜像地址（方便复制到 ECS 部署）────────────────────────
       - name: Print image tag
         run: |
           echo "### ${{ matrix.service }} image pushed ###"
