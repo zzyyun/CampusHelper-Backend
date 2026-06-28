@@ -373,6 +373,40 @@ services:
           memory: 256M
     restart: always
 
+  # ── 反向代理（Nginx，HTTPS 终止）────────────────────────────────
+  # 监听 80 (HTTP → 301 HTTPS) + 443 (HTTPS → gateway:50000)
+  # 证书：阿里云免费个人测试证书，部署时手动上传到 ../nginx/certs/
+  # 关联 issue: #130 (Phase A)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: campus-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/conf/nginx.conf:/etc/nginx/nginx.conf:ro  # 主配置
+      - ../nginx/html:/usr/share/nginx/html:ro              # 微信校验文件 + 静态资源
+      - ../nginx/certs:/etc/nginx/certs:ro                  # SSL 证书（不入仓，部署时手动上传）
+      - ../nginx/logs:/var/log/nginx                        # 访问/错误日志
+    networks:
+      - campus-net
+    depends_on:
+      gateway:
+        condition: service_healthy
+    # healthcheck: 容器内 wget 自检 HTTPS（证书需已 mount）
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider https://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+    restart: always
+
 volumes:
   etcd-data:
     name: campus-etcd-data
