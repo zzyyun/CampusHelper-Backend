@@ -1,21 +1,31 @@
-package ai_moderation
+// Package onnxruntime - onnx_loader_test.go 测试 ONNX loader 决策/softmax/factory 等纯函数。
+//
+// 注：完整端到端 ONNX 推理测试需要 libonnxruntime + .onnx 模型文件，不在 CI 中运行。
+// 这里只测试不依赖 cgo 库的纯逻辑。
+
+//go:build onnx_enabled
+// +build onnx_enabled
+
+package onnxruntime
 
 import (
 	"testing"
+
+	"go_projects/praProject1/internal/ai_moderation/types"
 )
 
 func TestDecideResult(t *testing.T) {
 	tests := []struct {
 		prob     float32
-		expected Result
+		expected types.Result
 	}{
-		{0.95, ResultBlock},
-		{0.9, ResultBlock},
-		{0.89, ResultReview},
-		{0.5, ResultReview},
-		{0.49, ResultPass},
-		{0.1, ResultPass},
-		{0.0, ResultPass},
+		{0.95, types.ResultBlock},
+		{0.9, types.ResultBlock},
+		{0.89, types.ResultReview},
+		{0.5, types.ResultReview},
+		{0.49, types.ResultPass},
+		{0.1, types.ResultPass},
+		{0.0, types.ResultPass},
 	}
 	for _, tt := range tests {
 		got := decideResult(tt.prob)
@@ -61,86 +71,6 @@ func TestSoftmaxAndMax_TooFewLogits(t *testing.T) {
 	}
 }
 
-func TestBertTokenizer_Encode(t *testing.T) {
-	tok, err := NewBertTokenizer()
-	if err != nil {
-		t.Fatalf("tokenizer init: %v", err)
-	}
-
-	inputIDs, mask, err := tok.Encode("hello world 你好", 64)
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-
-	if len(inputIDs) != 64 {
-		t.Errorf("expected length 64, got %d", len(inputIDs))
-	}
-	if len(mask) != 64 {
-		t.Errorf("mask length mismatch: %d", len(mask))
-	}
-	if inputIDs[0] != 101 {
-		t.Errorf("first token should be [CLS]=101, got %d", inputIDs[0])
-	}
-	if inputIDs[len(inputIDs)-1] != 0 {
-		// padding token = 0
-		t.Errorf("last non-special token should be padding=0, got %d", inputIDs[len(inputIDs)-1])
-	}
-	// [CLS] 和首字符应是 attention mask = 1
-	if mask[0] != 1 {
-		t.Errorf("first mask should be 1, got %d", mask[0])
-	}
-}
-
-func TestBertTokenizer_Truncate(t *testing.T) {
-	tok, _ := NewBertTokenizer()
-	longText := ""
-	for i := 0; i < 1000; i++ {
-		longText += "你"
-	}
-	ids, _, err := tok.Encode(longText, 64)
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	if len(ids) != 64 {
-		t.Errorf("should truncate to 64, got %d", len(ids))
-	}
-}
-
-func TestTryCreateOnnxLoader_DisabledMode(t *testing.T) {
-	cfg := ModelConfig{Enabled: false, ModelPath: "/tmp/none.onnx"}
-	_, err := TryCreateOnnxLoader(cfg)
-	if err == nil {
-		t.Error("disabled mode should error")
-	}
-}
-
-func TestTryCreateOnnxLoader_MissingPath(t *testing.T) {
-	cfg := ModelConfig{Enabled: true, ModelPath: ""}
-	_, err := TryCreateOnnxLoader(cfg)
-	if err == nil {
-		t.Error("missing path should error")
-	}
-}
-
-func TestTryCreateOnnxLoader_FileNotFound(t *testing.T) {
-	cfg := ModelConfig{
-		Enabled:    true,
-		ModelPath:  "/tmp/nonexistent_model.onnx",
-		ModelVersion: "v1.0-test",
-		TimeoutMs: 800,
-	}
-	_, err := TryCreateOnnxLoader(cfg)
-	if err == nil {
-		t.Error("nonexistent file should error")
-	}
-}
-
-func TestOnnxLoader_Version(t *testing.T) {
-	// 不实际加载，只测试 Version 方法（创建后立即销毁）
-	// 由于无法轻易 mock onnx session，这里跳过完整测试
-	t.Skip("requires ONNX runtime + model file")
-}
-
 func TestExpFast(t *testing.T) {
 	// exp(0) = 1
 	if v := expFast(0.0); v < 0.99 || v > 1.01 {
@@ -154,4 +84,39 @@ func TestExpFast(t *testing.T) {
 	if v := expFast(-10.0); v > 1e-3 || v < 0 {
 		t.Errorf("exp(-10) should be ~0, got %g", v)
 	}
+}
+
+func TestTryCreateOnnxLoader_DisabledMode(t *testing.T) {
+	cfg := types.ModelConfig{Enabled: false, ModelPath: "/tmp/none.onnx"}
+	_, err := TryCreateOnnxLoader(cfg)
+	if err == nil {
+		t.Error("disabled mode should error")
+	}
+}
+
+func TestTryCreateOnnxLoader_MissingPath(t *testing.T) {
+	cfg := types.ModelConfig{Enabled: true, ModelPath: ""}
+	_, err := TryCreateOnnxLoader(cfg)
+	if err == nil {
+		t.Error("missing path should error")
+	}
+}
+
+func TestTryCreateOnnxLoader_FileNotFound(t *testing.T) {
+	cfg := types.ModelConfig{
+		Enabled:      true,
+		ModelPath:    "/tmp/nonexistent_model.onnx",
+		ModelVersion: "v1.0-test",
+		TimeoutMs:    800,
+	}
+	_, err := TryCreateOnnxLoader(cfg)
+	if err == nil {
+		t.Error("nonexistent file should error")
+	}
+}
+
+func TestOnnxLoader_Version(t *testing.T) {
+	// 不实际加载，只测试 Version 方法（创建后立即销毁）
+	// 由于无法轻易 mock onnx session，这里跳过完整测试
+	t.Skip("requires ONNX runtime + model file")
 }

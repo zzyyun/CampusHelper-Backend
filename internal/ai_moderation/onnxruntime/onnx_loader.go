@@ -1,17 +1,20 @@
-// Package ai_moderation - onnx_loader.go 提供 ONNX Runtime 模型加载器实现。
+// Package onnxruntime 提供 onnxruntime-go 真实推理能力（cgo 依赖）。
 //
-// 本文件实现 task-046 (#93) 的 ONNX 模型加载 + 推理能力。
-// 当前为适配层实现，根据环境决定真实加载或 mock fallback：
-//   - 若环境变量 ENABLE_ONNX=true 且模型文件存在 → 使用 onnxruntime-go 加载真实模型
-//   - 否则 → 自动 fallback 到 MockLoader（保持服务可用性）
+// 本包所有源文件均带 //go:build onnx_enabled 标签：
+//   - 默认构建（mock 模式）：本包不参与编译，零 cgo 依赖，可 CGO_ENABLED=0 构建
+//   - 启用构建（go build -tags onnx_enabled）：ai_moderation 服务的真实 ONNX 推理路径
 //
-// 注意：onnxruntime-go 需要 CGO 和 libonnxruntime 动态库。
+// 运行时依赖：本包需要 libonnxruntime 动态库（libonnxruntime.so / onnxruntime.dll）。
 // 本地开发可下载：https://github.com/microsoft/onnxruntime/releases
 //
 // 关联：
 //   - PRD docs/ai-moderation-content-service-v3.0-prd.md
 //   - 任务 task-046 (#93)
-package ai_moderation
+
+//go:build onnx_enabled
+// +build onnx_enabled
+
+package onnxruntime
 
 import (
 	"context"
@@ -23,9 +26,11 @@ import (
 	"time"
 
 	ort "github.com/yalue/onnxruntime_go"
+
+	"go_projects/praProject1/internal/ai_moderation/types"
 )
 
-// OnnxLoader ONNX Runtime 模型加载器（真实推理）
+// OnnxLoader ONNX Runtime 模型加载器（真实推理）。
 type OnnxLoader struct {
 	session   *ort.DynamicAdvancedSession
 	tokenizer *BertTokenizer
@@ -33,7 +38,7 @@ type OnnxLoader struct {
 	timeoutMs int
 }
 
-// NewOnnxLoader 创建 ONNX loader
+// NewOnnxLoader 创建 ONNX loader。
 //
 // 参数：
 //   - modelPath: .onnx 模型文件路径
@@ -57,7 +62,7 @@ func NewOnnxLoader(modelPath, version string, timeoutMs int) (*OnnxLoader, error
 	session, err := ort.NewDynamicAdvancedSession(
 		modelPath,
 		[]string{"input_ids", "attention_mask"}, // 输入名（取决于模型导出）
-		[]string{"logits"},                       // 输出名
+		[]string{"logits"},                     // 输出名
 		nil,
 	)
 	if err != nil {
@@ -79,8 +84,8 @@ func NewOnnxLoader(modelPath, version string, timeoutMs int) (*OnnxLoader, error
 	}, nil
 }
 
-// Infer 执行推理（调用 ONNX Runtime）
-func (l *OnnxLoader) Infer(ctx context.Context, text string) (*InferenceResult, error) {
+// Infer 执行推理（调用 ONNX Runtime）。
+func (l *OnnxLoader) Infer(ctx context.Context, text string) (*types.InferenceResult, error) {
 	start := time.Now()
 
 	// Tokenize → input_ids + attention_mask
@@ -126,7 +131,7 @@ func (l *OnnxLoader) Infer(ctx context.Context, text string) (*InferenceResult, 
 	resultEnum := decideResult(confidence)
 	categories := []string{} // TODO: 多标签分类模型可输出类别
 
-	return &InferenceResult{
+	return &types.InferenceResult{
 		Result:       resultEnum,
 		Confidence:   confidence,
 		Categories:   categories,
@@ -136,10 +141,10 @@ func (l *OnnxLoader) Infer(ctx context.Context, text string) (*InferenceResult, 
 	}, nil
 }
 
-// Version 返回模型版本
+// Version 返回模型版本。
 func (l *OnnxLoader) Version() string { return l.version }
 
-// Close 释放 ONNX session 资源
+// Close 释放 ONNX session 资源。
 func (l *OnnxLoader) Close() error {
 	if l.session != nil {
 		return l.session.Destroy()
@@ -149,29 +154,29 @@ func (l *OnnxLoader) Close() error {
 
 // ─── 决策辅助 ──────────────────────────────────────────────────────────────
 
-// decideResult 根据 confidence 决策 Result
+// decideResult 根据 confidence 决策 Result。
 //
 // 阈值（PRD § Feature 1）：
-//   - confidence ≥ 0.9 → PASS
+//   - confidence ≥ 0.9 → BLOCK
 //   - 0.5 ≤ confidence < 0.9 → REVIEW
-//   - confidence < 0.5 → BLOCK
+//   - confidence < 0.5 → PASS
 //
 // 注意：模型输出是二分类 logits，单值经过 softmax 后表示"违规概率"。
-// 当前简化决策：违规概率 < 0.5 → PASS；0.5-0.9 → REVIEW；≥ 0.9 → BLOCK
-func decideResult(violationProb float32) Result {
+// 当前简化决策：违规概率 < 0.5 → PASS；0.5-0.9 → REVIEW；≥ 0.9 → BLOCK。
+func decideResult(violationProb float32) types.Result {
 	if violationProb >= 0.9 {
-		return ResultBlock
+		return types.ResultBlock
 	}
 	if violationProb >= 0.5 {
-		return ResultReview
+		return types.ResultReview
 	}
-	return ResultPass
+	return types.ResultPass
 }
 
-// softmaxAndMax 对单元素 logits 应用 softmax 并返回 max 概率
+// softmaxAndMax 对单元素 logits 应用 softmax 并返回 max 概率。
 //
-// 注：当前模型输出是 [batch, 2] 形状的 logits（正常/违规）
-// 取 batch=0, class=违规 的 softmax 概率
+// 注：当前模型输出是 [batch, 2] 形状的 logits（正常/违规）。
+// 取 batch=0, class=违规 的 softmax 概率。
 func softmaxAndMax(logits []float32) (float32, error) {
 	if len(logits) < 2 {
 		return 0, fmt.Errorf("expected at least 2 logits, got %d", len(logits))
@@ -200,7 +205,7 @@ func softmaxAndMax(logits []float32) (float32, error) {
 	return probViolation, nil
 }
 
-// expFast 保留作为 fallback（实际使用 math.Exp，标准库精度更高）
+// expFast 保留作为 fallback（实际使用 math.Exp，标准库精度更高）。
 //
 // 对于 softmax 输入（≤ 0），可使用泰勒级数展开。
 // 当前实现直接使用 math.Exp 以保证精度与稳定性。
@@ -210,12 +215,12 @@ func expFast(x float64) float64 {
 
 // ─── Factory ────────────────────────────────────────────────────────────────
 
-// TryCreateOnnxLoader 尝试创建 ONNX loader，失败时返回 error（不 fallback）
+// TryCreateOnnxLoader 尝试创建 ONNX loader，失败时返回 error（不 fallback）。
 //
-// 调用方（如 ai-moderation main.go）可决定 fallback 策略：
+// 调用方（如 ai_moderation 主包）可决定 fallback 策略：
 //   - 启动时：失败则退出（避免无声降级）
 //   - 运行时：失败则 fallback 到 mock
-func TryCreateOnnxLoader(cfg ModelConfig) (ModelLoader, error) {
+func TryCreateOnnxLoader(cfg types.ModelConfig) (types.ModelLoader, error) {
 	if !cfg.Enabled {
 		return nil, errors.New("onnx loader requires enabled=true")
 	}

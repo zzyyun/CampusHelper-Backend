@@ -1,10 +1,15 @@
-// Package ai_moderation 提供本地 AI 内容审核能力。
+// Package ai_moderation 提供 AI 审核服务的模型加载抽象层。
 //
-// 本包当前为骨架实现（mock 模式），待 task-046 (#93) 接入 onnxruntime-go 后切换到真实推理。
+// 架构分层（自上而下）：
+//   - Service（service.go）→ gRPC handler
+//   - ModelLoader interface（types 子包）→ 加载器抽象
+//   - MockLoader（本包 model.go）→ 默认实现，零 cgo 依赖
+//   - onnxruntime 子包（独立子包）→ 真实 ONNX 推理，仅 -tags onnx_enabled 时编译
 //
-// 接口分层：
-//   - ModelLoader：负责加载模型（mock / onnxruntime 二选一）
-//   - Service：gRPC handler（待 task-040 proto 生成后实现）
+// 关键约定：
+//   - 默认构建 = mock 模式（无 cgo 依赖，可 CGO_ENABLED=0 静态构建）
+//   - 启用 ONNX：go build -tags onnx_enabled ./...
+//   - 工厂注入：onnx_bridge.go（带 build tag）在 init() 中设置 onnxFactory
 //
 // 设计要点：
 //   - 启动时校验模型配置（mock 模式跳过文件校验）
@@ -22,98 +27,29 @@ import (
 	"time"
 )
 
-// Result AI 审核结果枚举（与 PB/ai_moderation.proto 一致）
-type Result int32
+// OnnxFactoryFunc 创建真实 ONNX loader 的工厂函数签名。
+//
+// 注入时机：onnx_bridge.go（//go:build onnx_enabled）的 init()。
+// 默认 nil：表示当前构建未启用 onnx_enabled tag，真实模式不可用。
+type OnnxFactoryFunc func(cfg ModelConfig) (ModelLoader, error)
 
-const (
-	// ResultPass 内容判定为正常
-	ResultPass Result = 0
-	// ResultReview AI 不确定，进人工池
-	ResultReview Result = 1
-	// ResultBlock 内容违规，拦截
-	ResultBlock Result = 2
-)
-
-// String Result 的可读字符串
-func (r Result) String() string {
-	switch r {
-	case ResultPass:
-		return "pass"
-	case ResultReview:
-		return "review"
-	case ResultBlock:
-		return "block"
-	default:
-		return fmt.Sprintf("unknown(%d)", int32(r))
-	}
-}
-
-// InferenceResult 单次 AI 推理输出
-type InferenceResult struct {
-	Result        Result    // pass/review/block
-	Confidence    float32   // 0.0 - 1.0
-	Categories    []string  // 命中类别（如 ["涉政", "广告引流"]）
-	LatencyMs     int64     // 推理耗时
-	ModelVersion  string    // 模型版本
-	FallbackUsed  bool      // 是否走降级（mock 模式恒为 true，真实模式下推理异常时为 true）
-}
-
-// ModelConfig 模型加载配置
-type ModelConfig struct {
-	ModelPath          string // ONNX 模型文件路径（volume 挂载）
-	ModelVersion       string // 模型版本标识
-	ModelHash          string // 模型文件 SHA256（启动时校验）
-	Enabled            bool   // true=加载真实 ONNX 模型, false=mock 模式
-	IntraOpNumThreads  int    // ONNX 内部线程数
-	EnableCpuMemArena  bool   // ONNX CPU memory arena
-	TimeoutMs          int    // 单次推理超时
-}
-
-// Validate 校验配置合法性
-func (c *ModelConfig) Validate() error {
-	if c.ModelVersion == "" {
-		return errors.New("model_version is required")
-	}
-	if c.Enabled && c.ModelPath == "" {
-		return errors.New("model_path is required when enabled=true")
-	}
-	if c.TimeoutMs <= 0 {
-		c.TimeoutMs = 800 // 默认 800ms
-	}
-	if c.IntraOpNumThreads <= 0 {
-		c.IntraOpNumThreads = 4
-	}
-	return nil
-}
-
-// ModelLoader 模型加载器抽象接口
-type ModelLoader interface {
-	// Infer 执行推理，返回结果。
-	// mock 模式：固定返回 ResultPass。
-	// 真实模式：调用 ONNX runtime。
-	Infer(ctx context.Context, text string) (*InferenceResult, error)
-
-	// Version 返回当前模型版本
-	Version() string
-
-	// Close 释放资源（关闭 ONNX session）
-	Close() error
-}
+// onnxFactory 全局工厂变量（默认 nil，启用 onnx_enabled 时由 onnx_bridge.go 注入）。
+var onnxFactory OnnxFactoryFunc
 
 // ── Mock 实现 ────────────────────────────────────────────────────────────────
 
-// MockLoader mock 模式实现：固定返回 PASS，用于骨架阶段。
-// 真实 ONNX 实现见 task-046 (#93)。
+// MockLoader mock 模式实现：固定返回 PASS，用于骨架阶段与单元测试。
+// 真实 ONNX 实现见 internal/ai_moderation/onnxruntime（仅 -tags onnx_enabled 编译）。
 type MockLoader struct {
 	version string
 }
 
-// NewMockLoader 创建 mock loader
+// NewMockLoader 创建 mock loader。
 func NewMockLoader(version string) *MockLoader {
 	return &MockLoader{version: version}
 }
 
-// Infer mock 模式：固定返回 PASS，confidence=1.0
+// Infer mock 模式：固定返回 PASS，confidence=1.0。
 func (m *MockLoader) Infer(ctx context.Context, text string) (*InferenceResult, error) {
 	start := time.Now()
 	// mock 推理"耗时"约 5ms（模拟真实模型加载后的预热开销）
@@ -132,16 +68,21 @@ func (m *MockLoader) Infer(ctx context.Context, text string) (*InferenceResult, 
 	}, nil
 }
 
-// Version 返回模型版本
+// Version 返回模型版本。
 func (m *MockLoader) Version() string { return m.version }
 
-// Close mock 模式无需释放
+// Close mock 模式无需释放。
 func (m *MockLoader) Close() error { return nil }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
 // NewModelLoader 根据配置选择 mock 或真实实现。
-// 当前（task-039 阶段）仅实现 mock，真实 ONNX loader 在 task-046 (#93) 完成。
+//
+// 真实模式（cfg.Enabled=true）：
+//   - 启用 -tags onnx_enabled 时，由 onnx_bridge.go 注入的工厂调用 onnxruntime 子包
+//   - 未启用 build tag 时，onnxFactory 为 nil，返回明确错误（避免运行时才发现）
+//
+// mock 模式（cfg.Enabled=false）：直接返回 MockLoader。
 func NewModelLoader(cfg ModelConfig) (ModelLoader, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid model config: %w", err)
@@ -152,20 +93,16 @@ func NewModelLoader(cfg ModelConfig) (ModelLoader, error) {
 		return NewMockLoader(cfg.ModelVersion), nil
 	}
 
-	// 真实模式：校验模型文件存在 + SHA256
-	if cfg.ModelHash != "" {
-		if err := verifyModelHash(cfg.ModelPath, cfg.ModelHash); err != nil {
-			return nil, fmt.Errorf("model hash verify failed: %w", err)
-		}
+	// 真实模式：通过工厂回调（仅 onnx_enabled 时可用）
+	if onnxFactory == nil {
+		return nil, errors.New(
+			"real ONNX loader unavailable: build with -tags onnx_enabled " +
+				"(see internal/ai_moderation/onnx_bridge.go)")
 	}
-
-	// 待 task-046 接入 onnxruntime-go
-	// 当前为占位，避免编译报错
-	return NewMockLoader(cfg.ModelVersion + "-fallback"),
-		fmt.Errorf("real ONNX loader not implemented yet (task-046 pending), fallback to mock")
+	return onnxFactory(cfg)
 }
 
-// verifyModelHash 校验模型文件 SHA256
+// verifyModelHash 校验模型文件 SHA256。
 func verifyModelHash(path, expected string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
