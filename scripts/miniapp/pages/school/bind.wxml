@@ -1,0 +1,15 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="school-page">
+  <view class="school-header">
+    <view class="school-title">选择你的学校</view>
+    <view class="school-desc">请选择或搜索你所在的学校</view>
+    <input class="school-search" placeholder="搜索学校名称" value="{{keyword}}" bindinput="onInput" />
+  </view>
+  <scroll-view class="school-list" scroll-y bindscrolltolower="onScrollToLower">
+    <view wx:for="{{schools}}" wx:key="school_id" class="school-item" data-school="{{item}}" bindtap="onSelect">
+      <view class="school-name">{{item.name}}</view><view class="school-province">{{item.province}}</view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    <view wx:if="{{schools.length === 0 && !loading}}" class="empty-state">未找到学校</view>
+  </scroll-view>
+</view>

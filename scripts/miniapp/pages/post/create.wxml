@@ -1,0 +1,34 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="create-page">
+  <scroll-view scroll-y class="create-scroll">
+    <view class="create-section">
+      <view class="form-label">帖子类型</view>
+      <view class="type-selector flex-row gap-20">
+        <view wx:for="{{[1,2,3]}}" wx:key="*this" class="type-option {{type===item?'active':''}}" data-type="{{item}}" bindtap="onTypeChange"><text>{{typeText[item]}}</text></view>
+      </view>
+    </view>
+    <view class="create-section">
+      <input class="form-input" value="{{title}}" data-field="title" bindinput="onInput" />
+      <textarea class="form-textarea mt-20" placeholder="正文内容..." value="{{content}}" data-field="content" bindinput="onInput" maxlength="5000"></textarea>
+    </view>
+    <view class="create-section">
+      <view class="form-label">图片</view>
+      <view class="image-grid flex-row gap-10">
+        <view wx:for="{{images}}" wx:key="*this" class="image-preview"><image src="{{item}}" mode="aspectFill" /><view class="image-remove" data-index="{{index}}" bindtap="removeImage">×</view></view>
+        <view wx:if="{{images.length<9}}" class="image-add" bindtap="chooseImage"><text class="add-icon">+</text></view>
+      </view>
+    </view>
+    <view wx:if="{{type===2}}" class="create-section extra-fields">
+  <picker range="{{lfItems}}" range-key="text" bindchange="onPick" data-field="lostOrFound" data-items="lfItems"><view class="picker-value">{{lfText}}</view></picker>
+      <input class="form-input mt-20" value="{{lostLocation}}" data-field="lostLocation" bindinput="onInput" />
+      <input class="form-input mt-20" value="{{contact}}" data-field="contact" bindinput="onInput" />
+    </view>
+    <view wx:if="{{type===3}}" class="create-section extra-fields">
+      <input class="form-input" value="{{price}}" data-field="price" bindinput="onInput" type="digit" />
+      <input class="form-input mt-20" value="{{originalPrice}}" data-field="originalPrice" bindinput="onInput" type="digit" />
+      <picker range="{{condItems}}" range-key="text" bindchange="onPick" data-field="condition" data-items="condItems"><view class="picker-value mt-20">{{condText}}</view></picker>
+      <picker range="{{tradeItems}}" range-key="text" bindchange="onPick" data-field="tradeMethod" data-items="tradeItems"><view class="picker-value mt-20">{{tradeText}}</view></picker>
+    </view>
+    <view class="create-submit"><button class="btn-primary" bindtap="onSubmit" disabled="{{submitting}}" loading="{{submitting}}">发布帖子</button></view>
+  </scroll-view>
+</view>

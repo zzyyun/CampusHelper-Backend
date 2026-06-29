@@ -1,0 +1,39 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="detail-page">
+  <scroll-view scroll-y class="detail-scroll">
+    <view wx:if="{{task}}" class="detail-content card">
+      <view class="flex-row items-center justify-between mb-20">
+        <view class="tag {{taskTypeTag[task.task_type]}}">{{taskTypeText[task.task_type]||'任务'}}</view>
+        <view class="tag {{task.status===3?'tag-green':task.status===4?'tag-red':'tag-orange'}}">{{taskStatusText[task.status]||'未知'}}</view>
+      </view>
+      <view class="detail-title">{{task.title}}</view>
+      <view wx:if="{{task.description}}" class="detail-body">{{task.description}}</view>
+      <view class="detail-info mt-20">
+        <view wx:if="{{task.location}}" class="info-row"><text class="info-label">地点:</text><text>{{task.location}}</text></view>
+        <view wx:if="{{task.reward_desc}}" class="info-row"><text class="info-label">报酬:</text><text class="reward">{{task.reward_desc}}</text></view>
+        <view wx:if="{{task.contact}}" class="info-row"><text class="info-label">联系:</text><text>{{task.contact}}</text></view>
+        <view wx:if="{{task.expired_at}}" class="info-row"><text class="info-label">截止:</text><text>{{fmt.formatTime(task.expired_at)}}</text></view>
+      </view>
+      <view class="detail-footer flex-row justify-between items-center mt-20">
+        <text class="text-sm">{{fmt.formatTime(task.created_at)}}</text>
+        <text class="text-sm">发布者: {{task.publisher_nickname||'匿名'}}</text>
+      </view>
+      <view class="task-actions flex-row gap-20 mt-30">
+        <view wx:if="{{task.status===1&&!task.claimant_id}}" class="btn-primary flex-1" bindtap="onClaim">接单</view>
+        <view wx:if="{{task.status===2&&task.claimant_id}}" class="btn-outline flex-1" bindtap="onComplete">确认完成</view>
+        <view wx:if="{{task.status===1||task.status===2}}" class="btn-outline flex-1" bindtap="onCancel" style="color:var(--warning);border-color:var(--warning)">取消</view>
+        <view wx:if="{{task.is_owner||task.status>=3}}" class="btn-danger flex-1" bindtap="onDelete">删除</view>
+      </view>
+    </view>
+  </scroll-view>
+  <view wx:if="{{showClaimForm}}" class="overlay" bindtap="cancelClaim"></view>
+  <view wx:if="{{showClaimForm}}" class="claim-form">
+    <view class="claim-title">接单</view>
+    <input class="form-input" placeholder="你的联系方式（必填）" value="{{claimContact}}" data-field="claimContact" bindinput="onInput" />
+    <textarea class="claim-textarea mt-20" placeholder="留言（可选）" value="{{claimMessage}}" data-field="claimMessage" bindinput="onInput"></textarea>
+    <view class="flex-row gap-20 mt-30">
+      <view class="btn-outline flex-1" bindtap="cancelClaim">取消</view>
+      <view class="btn-primary flex-1" bindtap="onSubmitClaim">提交</view>
+    </view>
+  </view>
+</view>

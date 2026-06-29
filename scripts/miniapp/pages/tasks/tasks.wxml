@@ -1,0 +1,37 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="tasks-page">
+  <view class="tasks-header">
+    <text class="tasks-title">任务市场</text>
+  </view>
+  <scroll-view class="tab-bar" scroll-x show-scrollbar="{{false}}">
+    <view wx:for="{{tabs}}" wx:key="id" class="tab-item {{activeTab===id?'active':''}}" data-tab="{{id}}" bindtap="onTabChange">
+      <text>{{item.name}}</text>
+      <view wx:if="{{activeTab===id}}" class="tab-line"></view>
+    </view>
+  </scroll-view>
+  <view class="task-list">
+    <view wx:for="{{tasks}}" wx:key="id" class="task-card card" data-id="{{item.id}}" bindtap="onTaskTap">
+      <view class="flex-row items-center justify-between mb-12">
+        <view class="tag {{taskTypeTag[item.task_type]||'tag-gray'}}">{{taskTypeText[item.task_type]||'任务'}}</view>
+        <view class="tag {{item.status===3?'tag-green':item.status===4?'tag-red':'tag-orange'}}">{{taskStatusText[item.status]||''}}</view>
+      </view>
+      <view class="task-title text-line2">{{item.title}}</view>
+      <view wx:if="{{item.description}}" class="task-desc text-ellipsis mt-8">{{item.description}}</view>
+      <view class="flex-row items-center gap-16 mt-12">
+        <text wx:if="{{item.location}}" class="text-sm">📍 {{item.location}}</text>
+        <text wx:if="{{item.reward_desc}}" class="text-sm reward-text">🏆 {{item.reward_desc}}</text>
+      </view>
+      <view class="flex-row items-center justify-between mt-16 pt-16 task-foot">
+        <text class="text-sm">{{fmt.formatTime(item.created_at)}}</text>
+        <text class="text-sm">{{item.publisher_nickname||'匿名'}}</text>
+      </view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    <view wx:if="{{tasks.length===0&&!loading}}" class="empty-state">
+      <text class="empty-icon">📋</text>
+      <text class="empty-text">暂无任务</text>
+      <view class="btn btn-outline btn-sm mt-16" bindtap="onCreateTask">发布任务</view>
+    </view>
+  </view>
+  <view class="fab" bindtap="onCreateTask"><text class="fab-icon">+</text></view>
+</view>

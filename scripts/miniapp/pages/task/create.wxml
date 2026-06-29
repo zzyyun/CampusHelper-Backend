@@ -1,0 +1,49 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="create-page">
+  <scroll-view scroll-y class="create-scroll">
+    <!-- 任务类型 -->
+    <view class="create-section">
+      <view class="section-title">任务类型</view>
+      <view class="type-selector">
+        <view wx:for="{{types}}" wx:key="*this" class="type-option {{taskType===item?'active':''}}" data-type="{{item}}" bindtap="onTypeChange">
+          <text class="type-option-text">{{typeText[item]}}</text>
+        </view>
+      </view>
+    </view>
+    <!-- 任务信息 -->
+    <view class="create-section">
+      <view class="section-title">任务信息</view>
+      <view class="form-group">
+        <text class="field-label required">标题</text>
+        <input class="form-input" value="{{title}}" data-field="title" bindinput="onInput" />
+      </view>
+      <view class="form-group">
+        <text class="field-label">任务描述</text>
+        <textarea class="form-textarea" value="{{description}}" data-field="description" bindinput="onInput"></textarea>
+      </view>
+    </view>
+    <!-- 详细说明 -->
+    <view class="create-section">
+      <view class="section-title">详细说明</view>
+      <view class="form-group">
+        <text class="field-label">地点</text>
+        <input class="form-input" value="{{location}}" data-field="location" bindinput="onInput" />
+      </view>
+      <view class="form-group">
+        <text class="field-label">报酬描述</text>
+        <input class="form-input" value="{{rewardDesc}}" data-field="rewardDesc" bindinput="onInput" />
+      </view>
+      <view class="form-group">
+        <text class="field-label required">联系方式</text>
+        <input class="form-input" value="{{contact}}" data-field="contact" bindinput="onInput" />
+      </view>
+      <view class="form-group">
+        <text class="field-label">备注</text>
+        <input class="form-input" value="{{note}}" data-field="note" bindinput="onInput" />
+      </view>
+    </view>
+    <view class="create-submit">
+      <button class="btn-primary submit-btn" bindtap="onSubmit" disabled="{{submitting}}" loading="{{submitting}}">发布任务</button>
+    </view>
+  </scroll-view>
+</view>

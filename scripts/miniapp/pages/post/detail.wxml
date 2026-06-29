@@ -1,0 +1,54 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="detail-page">
+  <scroll-view scroll-y class="detail-scroll" bindscrolltolower="onLoadMore">
+    <view wx:if="{{post}}" class="detail-content card">
+      <view class="flex-row items-center gap-10 mb-10">
+        <view class="tag {{postTypeTag[post.type]}}">{{postTypeText[post.type]||'通用'}}</view>
+        <text class="text-sm">{{post.likes_count||0}} 赞 · {{post.comment_count||0}} 评论</text>
+      </view>
+      <view class="detail-title">{{post.title}}</view>
+      <view class="detail-body">{{post.content}}</view>
+      <view wx:if="{{post.images&&post.images.length>0}}" class="detail-images">
+        <image wx:for="{{post.images}}" wx:key="*this" class="detail-image" src="{{item}}" mode="aspectFill" data-src="{{item}}" data-urls="{{post.images}}" bindtap="onImagePreview" />
+      </view>
+      <view wx:if="{{post.type===2&&post.lost_found}}" class="detail-extra">
+        <view class="extra-row"><text class="extra-label">类别:</text><text>{{lostFoundText[post.lost_found.lost_or_found]||''}}</text></view>
+        <view class="extra-row"><text class="extra-label">地点:</text><text>{{post.lost_found.location}}</text></view>
+        <view class="extra-row"><text class="extra-label">联系方式:</text><text>{{post.lost_found.contact}}</text></view>
+      </view>
+      <view wx:if="{{post.type===3&&post.second_hand}}" class="detail-extra">
+        <view class="extra-row"><text class="extra-label">价格:</text><text class="price">¥{{post.second_hand.price}}</text></view>
+        <view class="extra-row"><text class="extra-label">成色:</text><text>{{conditionText[post.second_hand.condition]||''}}</text></view>
+        <view class="extra-row"><text class="extra-label">交易方式:</text><text>{{tradeMethodText[post.second_hand.trade_method]||''}}</text></view>
+      </view>
+      <view class="detail-footer flex-row justify-between items-center mt-20">
+        <text class="text-sm">{{fmt.formatTime(post.created_at)}}</text>
+        <view class="flex-row gap-20">
+          <view class="action-btn {{isLiked?'liked':''}}" bindtap="onToggleLike"><text>{{isLiked?'❤️':'🤍'}} {{post.likes_count||0}}</text></view>
+          <view wx:if="{{isOwner}}" class="action-btn danger" bindtap="onDelete">删除</view>
+        </view>
+      </view>
+    </view>
+    <view class="detail-comments">
+      <view class="section-title">评论 ({{post?post.comment_count:0}})</view>
+      <view wx:for="{{comments}}" wx:key="id" class="comment-item">
+        <view class="comment-content">{{item.content}}</view>
+        <view class="comment-meta flex-row items-center justify-between mt-10">
+          <view class="flex-row items-center gap-10"><text class="text-sm">{{fmt.formatTime(item.created_at)}}</text><text class="text-sm reply-btn" data-comment="{{item}}" bindtap="onReplyTo">回复</text></view>
+          <text class="text-sm danger" data-id="{{item.id}}" bindtap="onDeleteComment">删除</text>
+        </view>
+      </view>
+      <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    </view>
+  </scroll-view>
+  <view class="comment-bar">
+    <view wx:if="{{replyTo}}" class="reply-hint flex-row items-center justify-between">
+      <text class="text-sm">回复: {{replyTo.content}}</text>
+      <text class="text-sm danger" bindtap="cancelReply">取消</text>
+    </view>
+    <view class="flex-row items-center">
+      <input class="comment-input flex-1" placeholder="{{replyTo?'输入回复...':'输入评论...'}}" value="{{commentText}}" bindinput="onCommentInput" />
+      <button class="comment-submit" bindtap="onSubmitComment" disabled="{{!commentText.trim()}}">发送</button>
+    </view>
+  </view>
+</view>

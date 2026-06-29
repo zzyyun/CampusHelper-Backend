@@ -1,0 +1,16 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="notify-page">
+  <view wx:if="{{unreadCount>0}}" class="notify-actions"><text>未读 {{unreadCount}} 条</text><text class="notify-action" bindtap="onReadAll">全部标记已读</text></view>
+  <view class="notify-list">
+    <view wx:for="{{notifications}}" wx:key="id" class="notify-item {{item.is_read?'':'unread'}}" data-item="{{item}}" bindtap="onTapNotify">
+      <view class="flex-row items-center justify-between">
+        <view class="flex-row items-center gap-10"><view class="notify-dot {{item.is_read?'':'active'}}"></view><text>{{notifyTypeText[item.type]||item.type}}</text></view>
+        <view class="flex-row items-center gap-10"><text class="text-sm">{{fmt.formatTime(item.created_at)}}</text><text class="notify-delete" data-id="{{item.id}}" bindtap="onDelete" catchtap>删除</text></view>
+      </view>
+      <view wx:if="{{item.title}}" class="notify-title">{{item.title}}</view>
+      <view wx:if="{{item.content}}" class="notify-content">{{item.content}}</view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    <view wx:if="{{notifications.length===0&&!loading}}" class="empty-state">暂无通知</view>
+  </view>
+</view>

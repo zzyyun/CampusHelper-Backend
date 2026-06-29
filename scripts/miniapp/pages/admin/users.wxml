@@ -1,0 +1,31 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="admin-page">
+  <view class="search-bar flex-row items-center">
+    <input class="search-input flex-1" placeholder="搜索用户昵称" value="{{keyword}}" data-field="keyword" bindinput="onInput" />
+    <view class="search-btn" bindtap="onSearch">搜索</view>
+  </view>
+  <scroll-view class="user-list" scroll-y bindscrolltolower="onScrollToLower">
+    <view wx:for="{{users}}" wx:key="user_id" class="user-item card">
+      <view class="flex-row items-center justify-between">
+        <view><text class="text-lg">{{item.nickname||'未知'}}</text><text wx:if="{{item.school_name}}" class="text-sm ml-10">{{item.school_name}}</text></view>
+        <text class="tag {{item.role==='admin'?'tag-orange':item.role==='super_admin'?'tag-red':'tag-blue'}}">{{item.role||'student'}}</text>
+      </view>
+      <view wx:if="{{item.status===2}}" class="mt-10 tag tag-red">已封禁</view>
+      <view class="flex-row gap-10 mt-10">
+        <view wx:if="{{item.status!==2}}" class="btn-danger" style="padding:8rpx 20rpx;font-size:24rpx" data-id="{{item.user_id}}" bindtap="onBan">封禁</view>
+        <view wx:if="{{item.status===2}}" class="btn-outline" style="padding:8rpx 20rpx;font-size:24rpx" data-id="{{item.user_id}}" bindtap="onUnban">解封</view>
+      </view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    <view wx:if="{{users.length===0&&!loading}}" class="empty-state">暂无用户数据</view>
+  </scroll-view>
+  <view wx:if="{{showBanModal}}" class="overlay" catchtap="cancelBan"></view>
+  <view wx:if="{{showBanModal}}" class="ban-form">
+    <view class="ban-title">封禁用户</view>
+    <textarea class="ban-textarea" placeholder="封禁原因（必填）" value="{{banReason}}" data-field="banReason" bindinput="onInput"></textarea>
+    <view class="flex-row gap-20 mt-30">
+      <view class="btn-outline flex-1" bindtap="cancelBan">取消</view>
+      <view class="btn-danger flex-1" bindtap="submitBan">确认封禁</view>
+    </view>
+  </view>
+</view>

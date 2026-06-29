@@ -1,0 +1,59 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/home/home",
+    "pages/tasks/tasks",
+    "pages/notifications/notifications",
+    "pages/profile/profile",
+    "pages/school/bind",
+    "pages/post/detail",
+    "pages/post/create",
+    "pages/task/detail",
+    "pages/task/create",
+    "pages/search/search",
+    "pages/admin/index",
+    "pages/admin/users",
+    "pages/admin/audit"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "校园互助",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f5f5",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#07c160",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页",
+        "iconPath": "images/tab_home.png",
+        "selectedIconPath": "images/tab_home_active.png"
+      },
+      {
+        "pagePath": "pages/tasks/tasks",
+        "text": "任务",
+        "iconPath": "images/tab_task.png",
+        "selectedIconPath": "images/tab_task_active.png"
+      },
+      {
+        "pagePath": "pages/notifications/notifications",
+        "text": "消息",
+        "iconPath": "images/tab_notify.png",
+        "selectedIconPath": "images/tab_notify_active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "images/tab_me.png",
+        "selectedIconPath": "images/tab_me_active.png"
+      }
+    ]
+  },
+  "usingComponents": {},
+  "sitemapLocation": "sitemap.json"
+}

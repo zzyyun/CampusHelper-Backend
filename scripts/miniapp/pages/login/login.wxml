@@ -1,0 +1,14 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="login-page">
+  <view class="login-box">
+    <view class="login-logo">
+      <text class="logo-icon">C</text>
+    </view>
+    <text class="login-title">校园互助平台</text>
+    <text class="login-desc">失物招领 · 二手交易 · 跑腿代办</text>
+    <button class="login-btn" bindtap="onGetUserProfile" loading="{{loading}}" disabled="{{loading}}">
+      <text class="btn-text">微信一键登录</text>
+    </button>
+    <text class="login-error">{{errorMsg}}</text>
+  </view>
+</view>

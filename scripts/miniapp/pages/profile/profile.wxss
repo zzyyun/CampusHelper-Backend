@@ -1,0 +1,10 @@
+.profile-page { min-height: 100vh; padding-bottom: 60rpx; }
+.profile-header { position: relative; }
+.profile-bg { height: 200rpx; background: linear-gradient(135deg, var(--primary-light), var(--primary)); border-radius: 0 0 40rpx 40rpx; }
+.profile-info { margin-top: -80rpx; padding-bottom: 20rpx; }
+.profile-avatar { width: 120rpx; height: 120rpx; border-radius: 50%; background: var(--primary); color: #fff; font-size: 44rpx; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 6rpx solid #fff; box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.1); margin: 0 auto; }
+.profile-name { font-size: 34rpx; font-weight: 600; margin-top: 12rpx; text-align: center; }
+.profile-school { font-size: 26rpx; color: var(--primary); text-align: center; margin-top: 4rpx; }
+.profile-school.hint { color: var(--text-hint); }
+.profile-section { margin: 0 20rpx 20rpx; }
+.profile-logout { padding: 60rpx 80rpx 40rpx; }

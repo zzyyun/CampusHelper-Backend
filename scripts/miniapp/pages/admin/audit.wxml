@@ -1,0 +1,22 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="admin-page">
+  <view class="card" style="margin:16rpx 24rpx">
+    <text style="font-size:28rpx;font-weight:500">待审核内容</text>
+  </view>
+  <scroll-view class="audit-list" scroll-y bindscrolltolower="onScrollToLower">
+    <view wx:for="{{items}}" wx:key="content_id" class="card" style="margin:0 24rpx 16rpx">
+      <view style="font-size:28rpx;font-weight:500">{{item.title||'无标题'}}</view>
+      <view class="flex-row items-center gap-20 mt-10">
+        <text class="text-sm">作者: {{item.author_name||'未知'}}</text>
+        <text class="text-sm">{{item.content_type}}</text>
+        <text class="text-sm">{{fmt.formatTime(item.created_at)}}</text>
+      </view>
+      <view class="flex-row gap-20 mt-20">
+        <view class="btn-primary" style="padding:12rpx 0;font-size:26rpx" data-id="{{item.content_id}}" bindtap="onApprove">通过</view>
+        <view class="btn-danger" style="padding:12rpx 0;font-size:26rpx" data-id="{{item.content_id}}" bindtap="onReject">驳回</view>
+      </view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    <view wx:if="{{items.length===0&&!loading}}" class="empty-state">暂无待审核内容</view>
+  </scroll-view>
+</view>

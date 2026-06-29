@@ -1,0 +1,21 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="search-page">
+  <view class="search-bar flex-row items-center">
+    <input class="search-input flex-1" placeholder="搜索帖子、失物、二手..." value="{{keyword}}" bindinput="onInput" bindconfirm="onSearch" confirm-type="search" />
+    <view class="search-btn" bindtap="onSearch">搜索</view>
+  </view>
+  <scroll-view class="filter-bar" scroll-x>
+    <view wx:for="{{[{id:0,name:'全部'},{id:2,name:'失物招领'},{id:3,name:'二手交易'},{id:1,name:'通用'}]}}" wx:key="id"
+          class="filter-item {{typeFilter===item.id?'active':''}}" data-type="{{item.id}}" bindtap="onTypeFilter">{{item.name}}</view>
+  </scroll-view>
+  <view class="result-list">
+    <view wx:if="{{total>0}}" class="text-sm result-count">找到 {{total}} 条结果</view>
+    <view wx:for="{{results}}" wx:key="id" class="post-card card" data-id="{{item.id}}" bindtap="onPostTap">
+      <view class="tag {{postTypeTag[item.type]}}">{{postTypeText[item.type]||'通用'}}</view>
+      <view class="post-title">{{item.title}}</view><view class="post-content text-ellipsis">{{item.content}}</view>
+      <view class="post-footer"><text class="text-sm">{{fmt.formatTime(item.created_at)}}</text></view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">搜索中...</view>
+    <view wx:if="{{results.length===0&&!loading&&keyword}}" class="empty-state">未找到相关结果</view>
+  </view>
+</view>
