@@ -307,7 +307,6 @@ go test ./...
 
 - 主仓库：<https://github.com/zzyyun/CampusHelper-Backend>
 - Issues / PRs：欢迎提交
-- 开发规范：所有注释必须使用简体中文（项目约定）
 
 ## 许可证
 
