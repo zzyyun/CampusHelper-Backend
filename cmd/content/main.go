@@ -45,6 +45,7 @@ func main() {
 		&content_db.Post{},
 		&content_db.PostLike{},
 		&content_db.PostComment{},
+		&content_db.AIAuditLog{},
 	); err != nil {
 		log.Fatalf("auto-migrate: %v", err)
 	}

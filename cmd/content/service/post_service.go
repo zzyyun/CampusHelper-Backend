@@ -132,6 +132,20 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 	traceID := extractTraceID(ctx)
 	recordAIAuditLog(post.ID, aiDecision, req.Title+"\n"+req.Content, traceID)
 
+	// 发布 MQ 事件（按 status 区分）：
+	//   - published: 立即发 content.published，触发 ES Sync 索引到 ES
+	//   - pending:    不发，等人工 ApprovePost 通过后再发（已有逻辑）
+	//   - rejected:   发 content.review_result，通知用户审核未通过
+	switch post.Status {
+	case content_db.PostStatusPublished:
+		publishEvent(ctx, mq.EventContentPublished, post.ID, post.SchoolID, post.UserID)
+	case content_db.PostStatusRejected:
+		event := mq.NewContentEvent(mq.EventContentRejected, post.ID, post.SchoolID, post.UserID, traceID)
+		event.Data["result"] = "rejected"
+		event.Data["reason"] = "AI 审核未通过"
+		publishEventRaw(event)
+	}
+
 	// 链路追踪由 pkg/middleware/tracing 拦截器统一注入 ctx，
 	// 此处不再重复调用 contextx.SetTraceID（否则结果 ctx 被丢弃，属于死代码）。
 	// 如需在响应中回带 trace_id，请在 gRPC 响应 Header 中由统一拦截器写入。
