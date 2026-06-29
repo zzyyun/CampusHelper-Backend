@@ -87,7 +87,7 @@ fi
 # ─── 5. SSL 协议版本（必须 TLS 1.2+）──────────────────────────────────
 header "5. TLS 协议版本"
 if command -v openssl >/dev/null 2>&1; then
-  PROTO=$(echo | openssl s_client -servername "$DOMAIN" -connect "$DOMAIN:443" 2>/dev/null | grep "Protocol" | awk '{print $NF}' || echo "")
+  PROTO=$(echo | openssl s_client -servername "$DOMAIN" -connect "$DOMAIN:443" 2>/dev/null | grep -oE "TLSv1\.[0-3]" | head -1 || echo "")
   if [ "$PROTO" = "TLSv1.3" ] || [ "$PROTO" = "TLSv1.2" ]; then
     pass "协议版本: $PROTO"
   else
