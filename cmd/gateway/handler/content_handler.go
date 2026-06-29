@@ -115,7 +115,7 @@ func CreatePost(c *gin.Context) {
 // 读接口不强制 school 绑定；学校 ID 从 JWT 注入（未绑定时 sid=0，
 // 服务端会基于 sid=0 返回跨学校内容，由后续业务决定是否需前端引导绑定）。
 func ListPosts(c *gin.Context) {
-	ctx, sid, _, ok := readCtxWithIDs(c)
+	ctx, _, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -149,7 +149,7 @@ func ListPosts(c *gin.Context) {
 
 // GetPost 获取帖子详情（含 is_liked / is_owner）。
 func GetPost(c *gin.Context) {
-	ctx, sid, uid, ok := readCtxWithIDs(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -299,7 +299,7 @@ func DeleteComment(c *gin.Context) {
 
 // ListCommentReplies 查询某条一级评论下的所有二级回复（游标分页）。
 func ListCommentReplies(c *gin.Context) {
-	ctx, sid, _, ok := readCtxWithIDs(c)
+	ctx, _, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -332,7 +332,7 @@ func ListCommentReplies(c *gin.Context) {
 
 // ListComments 评论列表（游标分页）。
 func ListComments(c *gin.Context) {
-	ctx, sid, _, ok := readCtxWithIDs(c)
+	ctx, _, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -429,7 +429,7 @@ func SearchContent(c *gin.Context) {
 		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
 		return
 	}
-	ctx, sid, _, ok := readCtxWithIDs(c)
+	ctx, _, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -498,7 +498,7 @@ func readCtxWithIDs(c *gin.Context) (context.Context, int64, int64, bool) {
 	if !ok {
 		return nil, 0, 0, false
 	}
-	return ctx, sid, uid, true
+	return ctx, uid, sid, true
 }
 
 // userID 从 gin.Context 读 user_id；JWT 中间件保证已注入。
