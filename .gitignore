@@ -6,3 +6,16 @@ harness-progress.txt
 harness-tasks.json
 harness-tasks.json.bak
 harness-init.sh
+
+# 部署敏感文件（不入仓，部署时手动上传/自动生成）
+# 阿里云免费 SSL 证书
+deployments/nginx/certs/
+# Nginx 访问/错误日志
+deployments/nginx/logs/
+# 微信校验文件（每次申请不同）
+deployments/nginx/html/.well-known/
+# 阿里云 ECS 配置（含敏感凭证）
+config/aliyun.md
+config/my_config.yaml
+config/my_config.yaml.bak*
+config/campus.pem
