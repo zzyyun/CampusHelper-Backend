@@ -1,0 +1,48 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="home-page">
+  <view class="home-header">
+    <view class="flex-row items-center justify-between">
+      <text class="school-name">{{schoolName || '校园互助'}}</text>
+    </view>
+    <view class="search-bar" bindtap="onSearch">
+      <text>🔍</text>
+      <text class="search-text">搜帖子、失物、二手...</text>
+    </view>
+  </view>
+  <scroll-view class="tab-bar" scroll-x show-scrollbar="{{false}}">
+    <view wx:for="{{tabs}}" wx:key="id" class="tab-item {{activeTab===id?'active':''}}" data-tab="{{id}}" bindtap="onTabChange">
+      <text>{{item.name}}</text>
+      <view wx:if="{{activeTab===id}}" class="tab-line"></view>
+    </view>
+  </scroll-view>
+  <view class="feed-list">
+    <view wx:for="{{posts}}" wx:key="id" class="feed-card card" data-id="{{item.id}}" bindtap="onPostTap">
+      <view class="flex-row items-start gap-12">
+        <view class="feed-avatar">{{authorInitials[item.id]||'?'}}</view>
+        <view class="flex-col flex-1" style="min-width:0">
+          <view class="flex-row items-center gap-8">
+            <text class="author-name">{{item.author_name||'匿名'}}</text>
+            <view class="tag {{postTypeTag[item.type]||'tag-gray'}}">{{postTypeText[item.type]||'全部'}}</view>
+          </view>
+          <text class="text-sm">{{fmt.formatTime(item.created_at)}}</text>
+          <view class="feed-title mt-12">{{item.title}}</view>
+          <view class="feed-content text-line2 mt-8">{{item.content}}</view>
+          <view wx:if="{{item.images&&item.images.length>0}}" class="feed-images mt-12">
+            <image wx:for="{{item.images.slice(0,3)}}" wx:key="*this" class="feed-thumb" src="{{item}}" mode="aspectFill" />
+          </view>
+          <view class="feed-actions mt-16">
+            <text>👍 {{item.likes_count||0}}</text>
+            <text class="ml-12">💬 {{item.comment_count||0}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    <view wx:if="{{posts.length===0&&!loading}}" class="empty-state">
+      <text class="empty-icon">📝</text>
+      <text class="empty-text">暂无内容</text>
+      <view class="btn btn-outline btn-sm mt-16" bindtap="onCreatePost">发布第一条</view>
+    </view>
+  </view>
+  <view class="fab" bindtap="onCreatePost"><text class="fab-icon">+</text></view>
+</view>

@@ -1,0 +1,15 @@
+function formatTime(ts) {
+  if (!ts) return '';
+  var d = getDate(ts * 1000);
+  var now = getDate();
+  var diff = now.getTime() - d.getTime();
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+  if (diff < 172800000) return '昨天';
+  if (diff < 259200000) return '前天';
+  var y = d.getFullYear(); var m = d.getMonth() + 1; var dd = d.getDate();
+  if (y === now.getFullYear()) return m + '/' + dd;
+  return y + '/' + m + '/' + dd;
+}
+module.exports = { formatTime: formatTime };

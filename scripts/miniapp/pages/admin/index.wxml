@@ -1,0 +1,11 @@
+<wxs src="../../utils/format.wxs" module="fmt"/>
+<view class="admin-page">
+  <view class="card" style="text-align:center;padding:40rpx 30rpx">
+    <text style="font-size:40rpx;font-weight:600;display:block;margin-bottom:8rpx">管理后台</text>
+    <text class="text-md">内容审核 & 用户管理</text>
+  </view>
+  <view class="card" style="margin-top:20rpx">
+    <view class="menu-item" bindtap="onNavigate" data-url="/pages/admin/audit"><text class="menu-icon">📝</text><text class="menu-text">内容审核</text><text class="menu-arrow">›</text></view>
+    <view class="menu-item" bindtap="onNavigate" data-url="/pages/admin/users"><text class="menu-icon">👥</text><text class="menu-text">用户管理</text><text class="menu-arrow">›</text></view>
+  </view>
+</view>

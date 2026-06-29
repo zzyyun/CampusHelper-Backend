@@ -1,0 +1,17 @@
+.search-page { min-height: 100vh; background: var(--white); }
+.search-bar { padding: 20rpx 24rpx; gap: 16rpx; }
+.search-input { background: var(--bg); border-radius: 40rpx; padding: 16rpx 24rpx; font-size: 28rpx; }
+.search-btn { font-size: 28rpx; color: var(--primary); padding: 16rpx; font-weight: 500; }
+
+.filter-bar { display: flex; white-space: nowrap; padding: 0 24rpx 10rpx; border-bottom: 2rpx solid var(--border); }
+.filter-item { display: inline-block; padding: 12rpx 20rpx; font-size: 26rpx; color: var(--text-secondary); margin-right: 12rpx; border-radius: 20rpx; background: var(--bg); }
+.filter-item.active { background: var(--primary-light); color: var(--primary); }
+
+.result-list { padding: 16rpx 24rpx; }
+.result-count { padding: 8rpx 0 12rpx; }
+
+/* 搜索结果卡片（home v1 删除后在此独立维护） */
+.post-card { margin: 0 0 16rpx; }
+.post-title { font-size: 30rpx; font-weight: 500; margin: 12rpx 0 8rpx; }
+.post-content { font-size: 26rpx; color: var(--text-secondary); }
+.post-footer { padding-top: 12rpx; border-top: 2rpx solid var(--border); margin-top: 12rpx; }
