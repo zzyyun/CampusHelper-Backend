@@ -18,7 +18,7 @@
 - **全链路追踪**：TraceID 贯穿 HTTP 网关 → gRPC 内部调用 → RabbitMQ 异步消息 → 消费者
 - **每服务独立数据库**：5 个 MySQL 库（user/content/task/message/file），符合微服务架构原则
 - **AI 智能审核**：集成 v3.0 AI 文本审核（DFA + ONNX 模型双通道）
-- **HTTPS 生产部署**：Nginx 反代 + 阿里云免费个人测试证书（域名 `rithupc.cn`）
+- **HTTPS 生产部署**：Nginx 反代 + 阿里云免费个人测试证书
 
 ## 核心特性
 
@@ -37,18 +37,18 @@
 | 类别 | 选型 |
 |------|------|
 | **语言** | Go 1.25+ |
-| **API 网关** | [Gin](https://github.com/gin-gonic/gin)（HTTP/RESTful） |
+| **API 网关** | Gin（HTTP/RESTful） |
 | **内部 RPC** | gRPC + Protobuf |
-| **服务发现** | [etcd](https://etcd.io/) v3.5 |
-| **数据库** | MySQL 8.0（GORM）+ Redis 7（go-redis/v9） |
-| **消息队列** | [RabbitMQ](https://www.rabbitmq.com/) 3.12（amqp091-go） |
-| **搜索引擎** | [Elasticsearch](https://www.elastic.co/) 8（go-elasticsearch + ik 分词） |
-| **对象存储** | [MinIO](https://min.io/)（S3 兼容） |
-| **配置中心** | [Viper](https://github.com/spf13/viper) |
-| **链路追踪** | OpenTelemetry + [Jaeger](https://www.jaegertracing.io/) |
+| **服务发现** | etcd v3.5 |
+| **数据库** | MySQL 8.0（GORM）+ Redis 7 |
+| **消息队列** | RabbitMQ 3.12 |
+| **搜索引擎** | Elasticsearch 8（go-elasticsearch + ik 分词） |
+| **对象存储** | MinIO（S3 兼容） |
+| **配置中心** | Viper |
+| **链路追踪** | OpenTelemetry + Jaeger |
 | **日志** | 结构化日志（带 TraceID 与 RabbitMQ） |
 | **容器化** | Docker + Docker Compose v2 |
-| **反向代理** | [Nginx](https://www.nginx.com/) 1.25（alpine） |
+| **反向代理** | Nginx 1.25（alpine） |
 | **CI/CD** | GitHub Actions（6 服务矩阵构建 + 推阿里云 ACR） |
 | **云服务** | 阿里云 ECS + RDS MySQL + Tair Redis + ACR 容器镜像 |
 
@@ -57,7 +57,6 @@
 ```
                                   ┌─────────────────────────────────────┐
                                   │   小程序 (WeChat / 微信)               │
-                                  │   AppID: wxa782f10bddd49b38            │
                                   └────────────────┬────────────────────┘
                                                    │ HTTPS
                                                    ▼
@@ -86,8 +85,8 @@
        │  user  │      │content │ │  task  │ │ _msg │ │_file │ │  Model    │
        └────────┘      └────────┘ └────────┘ └──────┘ └──────┘ └────────────┘
 
-       MySQL 5 库   ← 阿里云 RDS MySQL (rm-bp1w9fi56lv1b7348)
-       Redis         ← 阿里云 Tair (r-bp1ywvgc1xxbc7b2x2)
+       MySQL 5 库   ← 阿里云 RDS MySQL（5 个独立库）
+       Redis         ← 阿里云 Tair
 
        etcd / RabbitMQ / MinIO / Elasticsearch ← ECS 自建（10 容器）
 ```
@@ -115,31 +114,17 @@ CampusHelper-Backend/
 │   ├── task/                     # 任务服务
 │   ├── message/                  # 消息服务
 │   ├── file/                     # 文件服务
-│   └── ai-moderation/            # AI 审核独立进程（ONNX 推理）
+│   └── ai-moderation/            # AI 审核独立进程
 ├── internal/                     # 各服务内部业务逻辑
 ├── PB/                           # Protobuf 定义 + 生成代码
 ├── pkg/                          # 全局公共组件
-│   ├── errcode/                  # 统一错误码
-│   ├── contextx/                 # Context 扩展
-│   ├── middleware/               # Gin + gRPC 拦截器
-│   ├── mq/                       # RabbitMQ 封装
-│   ├── es/                       # ES 客户端
-│   ├── db/                       # GORM 初始化
-│   ├── tracer/                   # OpenTelemetry
-│   ├── snowflake/                # 雪花 ID
-│   ├── etcd/                     # 服务发现
-│   ├── jwt/                      # JWT
-│   ├── sensitive/                # DFA 敏感词
-│   └── aiclient/                 # AI 审核客户端
+│   ├── errcode/ contextx/ middleware/ mq/ es/ db/
+│   ├── tracer/ snowflake/ etcd/ jwt/ sensitive/ aiclient/
 ├── deployments/                  # 部署配置
-│   ├── docker/
-│   │   ├── campus-docker-compose.yaml    # 10 容器编排
-│   │   ├── nginx/                        # Nginx 配置 + SSL
-│   │   └── es-with-ik/                   # ES + ik 分词
+│   ├── docker/                   # 10 容器编排 + Nginx + ES
 │   └── es/
 ├── build/docker/                 # 6 个微服务 Dockerfile + build.sh
-├── config/                       # 配置模板
-│   └── my_config.ecs.yaml.template
+├── config/                       # 配置模板（敏感配置不入仓）
 ├── docs/                         # PRD + 文档 + ApiFox 接口
 ├── scripts/                      # 部署 + 验证脚本
 │   ├── verify.sh
@@ -168,11 +153,11 @@ CampusHelper-Backend/
 git clone https://github.com/zzyyun/CampusHelper-Backend.git
 cd CampusHelper-Backend
 
-# 2. 准备配置
+# 2. 准备配置（从模板）
 cp config/my_config.ecs.yaml.template config/my_config.yaml
-# 编辑 config/my_config.yaml，配置 MySQL / Redis / 微信 AppID 等
+# 编辑 config/my_config.yaml，填写 MySQL / Redis / 微信 AppID 等
 
-# 3. 拉起基础设施 + 6 服务
+# 3. 拉起 10 容器（基础设施 + 6 服务）
 cd deployments/docker
 docker compose -f campus-docker-compose.yaml up -d
 
@@ -181,8 +166,6 @@ bash scripts/verify.sh
 ```
 
 ### ECS 部署
-
-详见 [docs/cloud-deployment-prd.md](docs/cloud-deployment-prd.md)。
 
 ```bash
 # 1. ECS 上克隆 + 配置
@@ -199,8 +182,6 @@ ssh root@<ECS_IP> "bash scripts/verify.sh && bash scripts/validate-campus-deploy
 
 ### HTTPS 部署（生产）
 
-详见 [docs/wechat-miniapp-launch-prd.md](docs/wechat-miniapp-launch-prd.md)。
-
 ```bash
 # 1. 申请阿里云免费个人测试证书
 # 2. 上传证书到 ECS
@@ -216,85 +197,30 @@ bash scripts/verify-https.sh
 
 ## 配置说明
 
-### 关键配置项（`config/my_config.yaml`）
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `mysql.host` | 阿里云 RDS 内网域名 | `rm-bp1w9fi56lv1b7348.mysql.rds.aliyuncs.com` |
-| `mysql.password` | RDS 密码 | `Yasuo1228` |
-| `redis.address` | Tair Redis 内网域名 | `r-bp1ywvgc1xxbc7b2x2.redis.rds.aliyuncs.com:6379` |
-| `rabbitmq.address` | 容器内地址 | `campus-rabbitmq:5672` |
-| `elasticsearch.index` | 帖子 ES 索引名 | `campus_posts` |
-| `etcd.address` | 容器内地址 | `campus-etcd:2379` |
-| `jwt.authKey` | JWT 签名密钥 | `<your-jwt-secret>` |
-| `wechat.appId` | 微信小程序 AppID | `wxa782f10bddd49b38` |
-| `wechat.appSecret` | 微信小程序 Secret | （敏感） |
-
 > ⚠️ `config/my_config.yaml` 不入仓（含敏感凭证）。模板见 `config/my_config.ecs.yaml.template`。
+
+需要配置的字段：
+- **MySQL**：host / password / 5 个数据库名（user/content/task/message/file）
+- **Redis**：address
+- **RabbitMQ**：username / password / address
+- **Elasticsearch**：addresses / index
+- **etcd**：address
+- **JWT**：authKey（签名密钥）
+- **WeChat**：appId / appSecret
 
 ## API 文档概览
 
 完整接口定义见 `docs/apifox-*-api.yaml`（可直接导入 ApiFox）。核心路由（`/api/v1`）：
 
-### 公开接口
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/health` | 健康检查 |
-| GET | `/schools` | 学校列表 |
-| POST | `/user/login` | 微信登录（双 Token） |
-| POST | `/user/refresh` | 刷新 Token |
-
-### 用户
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/user/me` | 当前用户信息 |
-| PUT | `/user/campus` | 绑定学校 |
-| PUT | `/user/info` | 更新昵称/头像 |
-
-### 内容
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/content/posts` | 帖子列表（游标分页） |
-| GET | `/content/posts/:id` | 帖子详情 |
-| POST | `/content/posts` | 发帖（含 AI 审核） |
-| PUT | `/content/posts/:id` | 编辑 |
-| DELETE | `/content/posts/:id` | 删除 |
-| POST | `/content/posts/:id/like` | 点赞 |
-| POST | `/content/search` | ES 搜索 |
-
-### 任务
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/tasks` | 任务列表 |
-| GET | `/tasks/:id` | 任务详情 |
-| POST | `/tasks` | 发任务 |
-| POST | `/tasks/:id/claim` | 抢单 |
-| PUT | `/tasks/:id/complete` | 完成 |
-| PUT | `/tasks/:id/cancel` | 取消 |
-
-### 通知
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/notifications` | 通知列表 |
-| GET | `/notifications/unread-count` | 未读数 |
-| PUT | `/notifications/:id/read` | 标已读 |
-| PUT | `/notifications/read-all` | 全部已读 |
-
-### 文件
-| Method | Path | 说明 |
-|--------|------|------|
-| POST | `/files/upload` | 上传图片（multipart） |
-| GET | `/files/:id` | 文件元数据 |
-| DELETE | `/files/:id` | 删除文件 |
-
-### 管理后台（需管理员权限）
-| Method | Path | 说明 |
-|--------|------|------|
-| POST | `/admin/users/ban` | 封禁用户 |
-| POST | `/admin/users/unban` | 解封 |
-| GET | `/admin/users/list` | 用户列表 |
-| GET | `/admin/content/audit-list` | 审核队列 |
-| POST | `/admin/content/audit` | 审核动作 |
+| 模块 | 路由数 | 关键路径 |
+|------|--------|----------|
+| **公开** | 4 | `/health`, `/schools`, `/user/login`, `/user/refresh` |
+| **用户** | 3 | `/user/me`, `/user/campus`, `/user/info` |
+| **内容** | 7 | `/content/posts`, `/content/posts/:id`, `/content/search` |
+| **任务** | 6 | `/tasks`, `/tasks/:id`, `/tasks/:id/claim` |
+| **通知** | 4 | `/notifications`, `/notifications/unread-count` |
+| **文件** | 3 | `/files/upload`, `/files/:id` |
+| **管理** | 5 | `/admin/users/ban`, `/admin/content/audit-list` |
 
 ## 测试
 
@@ -326,12 +252,9 @@ go test ./...
 1. 矩阵构建 6 个服务镜像（fail-fast: false）
 2. 缓存：Go modules + Docker layers（GHA cache）
 3. tag 策略：`:v1.0-{service}-{sha}` + `:v1.0-{service}-latest`
-4. 推阿里云 ACR（单 repo 多 tag 模式：`campus_sends/campus`）
+4. 推阿里云 ACR
 
-需要在 GitHub 仓库 Settings → Secrets 配置：
-- `ACR_REGISTRY`：阿里云 Registry 域名
-- `ACR_USERNAME`：阿里云账号
-- `ACR_PASSWORD`：AccessKey Secret
+需要在 GitHub 仓库 Settings → Secrets 配置 ACR 凭证（3 个）。
 
 ### ECS 资源分配（4 核 8G 经济型 e 系列）
 
@@ -371,14 +294,14 @@ go test ./...
 - v3.0 AI 智能审核：DFA + ONNX 双通道
 
 ### 🔄 进行中
-- Phase B 微信小程序真机自测
-- Phase C 体验版 + 正式版
+- 微信小程序真机自测
+- 体验版 + 正式版
 
 ### 📋 未来
-- v3.1 实时消息（WebSocket）
-- v3.2 管理后台 UI
-- v3.3 推送通知（订阅消息）
-- v3.4 数据统计与运营报表
+- 实时消息（WebSocket）
+- 管理后台 UI
+- 推送通知（订阅消息）
+- 数据统计与运营报表
 
 ## 贡献
 
