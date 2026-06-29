@@ -30,7 +30,7 @@ func ListNotifications(c *gin.Context) {
 		return
 	}
 
-	ctx, sid, uid, ok := readCtxWithIDs(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -59,7 +59,7 @@ func ListNotifications(c *gin.Context) {
 
 // UnreadCount 获取当前用户未读通知数。
 func UnreadCount(c *gin.Context) {
-	ctx, sid, uid, ok := readCtxWithIDs(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -87,7 +87,7 @@ func MarkRead(c *gin.Context) {
 		return
 	}
 
-	ctx, _, uid, ok := readCtxWithIDs(c)
+	ctx, uid, _, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -116,7 +116,7 @@ func MarkRead(c *gin.Context) {
 
 // MarkAllRead 标记全部通知为已读。
 func MarkAllRead(c *gin.Context) {
-	ctx, sid, uid, ok := readCtxWithIDs(c)
+	ctx, uid, sid, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
@@ -152,7 +152,7 @@ func DeleteNotification(c *gin.Context) {
 		return
 	}
 
-	ctx, _, uid, ok := readCtxWithIDs(c)
+	ctx, uid, _, ok := readCtxWithIDs(c)
 	if !ok {
 		return
 	}
