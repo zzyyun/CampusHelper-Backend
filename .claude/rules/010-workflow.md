@@ -26,3 +26,8 @@ globs: ["**/*"]
 ## 依赖管理
 - 新增依赖前先确认必要性
 - 提交前执行 `go mod tidy`
+
+## worktree+harness开发
+- 根据一个epic创建worktree
+- 在worktree中使用harness时只添加对应epic的任务
+- worktree不能作用到主工作区
