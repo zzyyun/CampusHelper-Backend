@@ -1,7 +1,9 @@
 package db
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -19,6 +21,9 @@ var (
 	dbs   = make(map[string]*gorm.DB)
 	dbMux sync.Mutex
 )
+
+// slowQueryThreshold 慢查询阈值，超过此时间的 SQL 将被记录到日志
+const slowQueryThreshold = 200 * time.Millisecond
 
 // InitDB 根据 service 名连接对应的数据库并写入 dbs。
 // 同一服务重复调用是幂等的（第二次返回缓存实例）。
@@ -51,13 +56,63 @@ func InitDB(service string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	// 使用可配置的连接池参数，未配置时使用4C8G 环境默认值
+	pool := cfg.GetPool()
+	sqlDB.SetMaxIdleConns(pool.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(pool.MaxOpenConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(pool.ConnMaxLifetime) * time.Second)
+	sqlDB.SetConnMaxIdleTime(time.Duration(pool.ConnMaxIdleTime) * time.Second)
+
+	// 注册慢查询监控回调
+	registerSlowQueryLogger(db, service)
+
+	log.Printf("[db] %s 连接池: MaxIdle=%d MaxOpen=%d Lifetime=%ds IdleTime=%ds",
+		service, pool.MaxIdleConns, pool.MaxOpenConns, pool.ConnMaxLifetime, pool.ConnMaxIdleTime)
 
 	dbs[service] = db
 	return db, nil
 }
+
+// registerSlowQueryLogger 注册 GORM Before/After 回调对，记录执行时间超过阈值的慢 SQL
+func registerSlowQueryLogger(db *gorm.DB, service string) {
+	// Before 回调：在查询前记录开始时间
+	beforeFn := func(db *gorm.DB) {
+		if db.Statement != nil {
+			db.Statement.Context = context.WithValue(db.Statement.Context, startTimeKey{}, time.Now())
+		}
+	}
+	// After 回调：在查询后计算耗时，超阈值则记录慢查询日志
+	afterFn := func(db *gorm.DB) {
+		if db.Statement == nil || db.Statement.Context == nil {
+			return
+		}
+		start, ok := db.Statement.Context.Value(startTimeKey{}).(time.Time)
+		if !ok {
+			return
+		}
+		elapsed := time.Since(start)
+		if elapsed > slowQueryThreshold {
+			log.Printf("[SLOW_QUERY] service=%s duration=%v rows=%d sql=%s",
+				service, elapsed, db.Statement.RowsAffected, db.Statement.SQL.String())
+		}
+	}
+
+	db.Callback().Query().Before("gorm:query").Register("slow_query:before_query", beforeFn)
+	db.Callback().Query().After("gorm:query").Register("slow_query:after_query", afterFn)
+
+	db.Callback().Create().Before("gorm:create").Register("slow_query:before_create", beforeFn)
+	db.Callback().Create().After("gorm:create").Register("slow_query:after_create", afterFn)
+
+	db.Callback().Update().Before("gorm:update").Register("slow_query:before_update", beforeFn)
+	db.Callback().Update().After("gorm:update").Register("slow_query:after_update", afterFn)
+
+	db.Callback().Delete().Before("gorm:delete").Register("slow_query:before_delete", beforeFn)
+	db.Callback().Delete().After("gorm:delete").Register("slow_query:after_delete", afterFn)
+}
+
+// startTimeKey 用于在 context 中存储查询开始时间
+type startTimeKey struct{}
 
 // ─── 各服务的便捷初始化方法（推荐使用，明确语义） ─────────────────────────
 
