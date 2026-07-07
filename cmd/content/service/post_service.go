@@ -12,6 +12,7 @@ import (
 	"time"
 
 	content_db "go_projects/praProject1/cmd/content/model"
+	content_database "go_projects/praProject1/cmd/content/database"
 	"go_projects/praProject1/cmd/content/repo"
 	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
@@ -161,13 +162,13 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 	}, nil
 }
 
-// GetPost 获取帖子详情
+// GetPost 获取帖子详情（使用 Redis 缓存加速读取）
 func (s *ContentServiceServer) GetPost(ctx context.Context, req *pb.GetPostRequest) (*pb.GetPostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: school_id/post_id 必须为正数", errInvalidArgument)
 	}
 
-	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	post, err := content_database.GetByIDWithCache(ctx, req.SchoolId, req.PostId)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, fmt.Errorf("%w: post %d 不存在", errNotFound, req.PostId)
@@ -226,6 +227,8 @@ func (s *ContentServiceServer) UpdatePost(ctx context.Context, req *pb.UpdatePos
 		}
 		return nil, err
 	}
+	// 写操作后失效缓存
+	content_database.InvalidatePostCache(ctx, req.SchoolId, req.PostId)
 	return &pb.UpdatePostResponse{Success: true}, nil
 }
 
@@ -240,6 +243,9 @@ func (s *ContentServiceServer) DeletePost(ctx context.Context, req *pb.DeletePos
 		}
 		return nil, err
 	}
+	// 写操作后失效缓存 + 列表缓存
+	content_database.InvalidatePostCache(ctx, req.SchoolId, req.PostId)
+	content_database.InvalidatePostListCache(ctx, req.SchoolId)
 	return &pb.DeletePostResponse{Success: true}, nil
 }
 
