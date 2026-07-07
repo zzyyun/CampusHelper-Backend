@@ -45,3 +45,29 @@
 ├── deployments/           # Dockerfile, docker-compose, k8s yaml
 ├── go.mod
 └── Makefile
+```
+
+## 4. 快速上手
+```bash
+# 安装依赖
+go mod download
+
+# 本地运行（示例：启动 gateway）
+go run ./cmd/gateway
+
+# 运行全部测试
+go test ./... -v
+
+# 静态分析
+go vet ./...
+
+# 生成 Protobuf 代码
+make proto
+```
+
+## 5. 核心约定
+- 多租户隔离：所有业务查询必须带 `school_id` 条件，禁止跨校数据访问
+- 每个微服务拥有独立 MySQL 数据库，禁止跨服务直连数据库
+- TraceID 全链路透传：gateway → gRPC → MQ → Consumer，不可中断
+- 代码注释使用简体中文
+- 公共组件放 `pkg/`，业务逻辑放 `internal/`，`pkg/` 中严禁包含业务代码

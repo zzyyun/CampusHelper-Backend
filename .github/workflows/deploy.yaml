@@ -1,49 +1,120 @@
-# CampusHelper-Backend 阿里云 ACR 部署流水线
-# 触发：push main → 矩阵构建 6 个微服务镜像 → 推送到阿里云 ACR
-# 文档：https://github.com/zzyyun/CampusHelper-Backend/issues/115
+# CampusHelper-Backend CI/CD 流水线
+# 阶段：test → lint → build → security-scan → deploy
+# 触发：push main → 构建推送镜像；部署需手动审批
 
-name: Build & Push to ACR
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:        # 允许手动触发（重跑/回滚）
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: '部署到 ECS'
+        required: false
+        type: boolean
+        default: false
+      service:
+        description: '要部署的服务（留空=全部）'
+        required: false
+        type: choice
+        options:
+          - ''
+          - gateway
+          - user
+          - content
+          - task
+          - message
+          - file
 
-# 全局环境变量（所有 job 共享）
+# ── 全局环境变量 ──────────────────────────────────────────────────────────────
 env:
-  # ACR Registry 来自 Secrets（格式：crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/campus_sends/campus）
   ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-  # 国内可访问的基础镜像（gcr.io 在国内不通，alpine 是稳定替代）
   BASE_IMAGE: alpine:3.19
   RUNTIME_USER: nobody
+  GO_VERSION: '1.25.0'
+
+# ── Job 依赖拓扑 ──────────────────────────────────────────────────────────────
+# test ─┐
+#       ├─→ build-and-push ─→ security-scan ─→ deploy（仅 main + 手动触发）
+# lint ─┘
 
 jobs:
-  build-and-push:
-    name: Build ${{ matrix.service }} & push to ACR
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 1. 单元测试 — 失败则阻止后续所有阶段
+  # ════════════════════════════════════════════════════════════════════════════════
+  test:
+    name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 30    # 6 个服务 + buildx 单服务最长 5 分钟
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./... -race -count=1 -timeout 10m
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 2. 代码检查 — golangci-lint 静态分析
+  # ════════════════════════════════════════════════════════════════════════════════
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62
+          args: --timeout=10m
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 3. 构建镜像 + 推送到 ACR（仅在 test 和 lint 通过后执行）
+  # ════════════════════════════════════════════════════════════════════════════════
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    needs: [test, lint]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
-      fail-fast: false     # 一个服务失败不影响其他 5 个并发构建
+      fail-fast: false
       matrix:
         service: [gateway, user, content, task, message, file]
 
     steps:
-      # ── 1. 检出代码 ───────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. 安装 Go（用于 build 阶段，但实际只触发 module download）─────────
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # ── 3. 启用 Docker Buildx（支持多平台、缓存、push）────────────────────
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── 4. 缓存 Go module 依赖（加速下次 build）───────────────────────────
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -54,9 +125,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      # ── 5. 登录阿里云 ACR ──────────────────────────────────────────────────
-      # 需要 GitHub Secrets: ACR_REGISTRY / ACR_USERNAME / ACR_PASSWORD
-      # 配置位置：仓库 Settings → Secrets and variables → Actions
       - name: Login to Aliyun ACR
         uses: docker/login-action@v3
         with:
@@ -64,16 +132,10 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # ── 6. 生成短 SHA 作为镜像 tag 后缀 ────────────────────────────────────
       - name: Generate short SHA
         id: short_sha
         run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # ── 7. 构建镜像 + 推送到 ACR ───────────────────────────────────────────
-      # ACR 个人版用单 repo 多 tag 模式：campus_sends/campus:v1.0-{service}-{tag}
-      # - :v1.0-{service}-{sha}    每次 commit 唯一
-      # - :v1.0-{service}-latest   滚动覆盖（指向最新 commit）
-      # 缓存：GitHub Actions 内置 GHA cache（按 service 隔离）
       - name: Build & Push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
@@ -87,16 +149,71 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ env.BASE_IMAGE }}
             RUNTIME_USER=${{ env.RUNTIME_USER }}
-          # Docker layer 缓存（按 service 隔离 key）
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          # 关闭 provenance/SBOM（ACR 个人版兼容性更好）
           provenance: false
           sbom: false
 
-      # ── 8. 输出最终镜像地址（方便复制到 ECS 部署）────────────────────────
       - name: Print image tag
         run: |
           echo "### ${{ matrix.service }} image pushed ###"
           echo "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-${{ steps.short_sha.outputs.value }}"
-          echo "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest"
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 4. 安全扫描 — trivy 检查镜像漏洞
+  # ════════════════════════════════════════════════════════════════════════════════
+  security-scan:
+    name: Security ${{ matrix.service }}
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, user, content, task, message, file]
+
+    steps:
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest"
+          format: 'table'
+          exit-code: '0'          # 仅报告，不阻止（HIGH/CRITICAL 建议后续手动修复）
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 5. 部署到 ECS（仅 main 分支 + 手动触发时执行）
+  # ════════════════════════════════════════════════════════════════════════════════
+  deploy:
+    name: Deploy to ECS
+    needs: [build-and-push, security-scan]
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production      # 需要在 GitHub Settings → Environments 配置
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate short SHA
+        id: short_sha
+        run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            # 设置镜像 registry
+            export ACR_REGISTRY="${{ env.ACR_REGISTRY }}"
+            export SHORT_SHA="${{ steps.short_sha.outputs.value }}"
+
+            # 部署脚本（在 ECS 上执行）
+            cd /opt/campus-helper
+            bash scripts/deploy-ecs.sh ${{ inputs.service || 'all' }} $SHORT_SHA
