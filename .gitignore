@@ -20,3 +20,5 @@ config/my_config.yaml
 config/my_config.yaml.bak*
 config/campus.pem
 .claude/hooks/notifications.log
+.claude/worktrees/
+worktrees/
