@@ -1,0 +1,23 @@
+﻿{
+  "skill_name": "incident-triage",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "P1 事故：用户登录接口返回 502，持续约 10 分钟。刚部署了 v1.2.3，怀疑与本次发布有关。下面是错误日志：\n[ERROR] 2026/06/27 12:30:15 gateway: upstream connect error 127.0.0.1:50051 connect: connection refused\n[ERROR] 2026/06/27 12:30:16 gateway: upstream connect error 127.0.0.1:50051 connect: connection refused\n[ERROR] 2026/06/27 12:30:17 user-svc: gRPC server failed to accept: listen tcp :50051: bind: address already in use",
+      "expected_output": "包含 Step 1-7 完整报告，有回滚命令，复现步骤可执行，日志已脱敏",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "P2 事故：某个用户发帖后图片显示为裂图，其他用户正常。没有错误日志，最近一次部署是 2 天前。用户系统是 iOS 微信小程序。",
+      "expected_output": "包含 Step 1-7 报告，有应急措施评估，有复现步骤",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "P0 事故：任务悬赏发布后所有用户看不到新任务，缓存刷新周期疑似失效。无最近部署变动，无错误日志。",
+      "expected_output": "包含完整报告，应急措施可回滚，有 Top 3 可能原因，根因分析和修复",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+﻿{
+  "eval_id": 2,
+  "eval_name": "p0-task-cache",
+  "prompt": "P0 事故：任务悬赏缓存问题...",
+  "assertions": ["应急措施可回滚", "有 Top 3 可能原因", "修复为最小 diff", "敏感信息已脱敏"]
+}
