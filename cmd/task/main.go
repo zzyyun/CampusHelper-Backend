@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"go_projects/praProject1/cmd/task/model"
+	task_repo "go_projects/praProject1/cmd/task/repo"
 	task_service "go_projects/praProject1/cmd/task/service"
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
+	"go_projects/praProject1/pkg/rdb"
 	"go_projects/praProject1/pkg/tracer"
 
 	task_pb "go_projects/praProject1/PB/pb/task_pb"
@@ -44,6 +46,14 @@ func main() {
 		log.Fatalf("[task-service] 自动迁移失败: %v", err)
 	}
 	fmt.Println("[task-service] MySQL 初始化完成")
+
+	// ── Redis + 任务缓存层 ─────────────────────────────────────────────────
+	if err := rdb.InitRedis(); err != nil {
+		log.Printf("[task-service] Redis 连接失败（缓存降级）: %v", err)
+	} else {
+		task_repo.InitTaskCache()
+		fmt.Println("[task-service] Redis 缓存层已启用")
+	}
 
 	pkg_etcd.InitEtcd()
 	defer pkg_etcd.CloseEtcd()

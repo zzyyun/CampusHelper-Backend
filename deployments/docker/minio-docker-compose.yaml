@@ -1,0 +1,45 @@
+# 校园互助平台 - MinIO 对象存储部署
+# 提供 S3 兼容的对象存储，供 file-service 上传/管理文件
+#
+# 用法：
+#   cd deployments/docker
+#   docker compose -f minio-docker-compose.yaml up -d
+#
+# 验证：
+#   curl http://127.0.0.1:9000/minio/health/live
+#   浏览器访问 http://127.0.0.1:9001  （MinIO Console，账号 minio / minio123）
+#
+# 停止 / 清理：
+#   docker compose -f minio-docker-compose.yaml down        # 仅停容器（保留数据卷）
+#   docker compose -f minio-docker-compose.yaml down -v     # 同时删除数据卷（彻底清空）
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: campus-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"    # S3 API（file-service 连接的就是这个）
+      - "9001:9001"    # Web 管理控制台
+    networks:
+      - campus-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+    name: campus-minio-data
+
+networks:
+  campus-net:
+    name: campus-net

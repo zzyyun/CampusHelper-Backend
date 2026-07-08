@@ -12,6 +12,7 @@ import (
 	"time"
 
 	content_db "go_projects/praProject1/cmd/content/model"
+	content_database "go_projects/praProject1/cmd/content/database"
 	"go_projects/praProject1/cmd/content/repo"
 	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
@@ -161,13 +162,13 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 	}, nil
 }
 
-// GetPost 获取帖子详情
+// GetPost 获取帖子详情（使用 Redis 缓存加速读取）
 func (s *ContentServiceServer) GetPost(ctx context.Context, req *pb.GetPostRequest) (*pb.GetPostResponse, error) {
 	if req.SchoolId <= 0 || req.PostId <= 0 {
 		return nil, fmt.Errorf("%w: school_id/post_id 必须为正数", errInvalidArgument)
 	}
 
-	post, err := repo.GetByID(req.SchoolId, req.PostId)
+	post, err := content_database.GetByIDWithCache(ctx, req.SchoolId, req.PostId)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
 			return nil, fmt.Errorf("%w: post %d 不存在", errNotFound, req.PostId)
@@ -226,6 +227,8 @@ func (s *ContentServiceServer) UpdatePost(ctx context.Context, req *pb.UpdatePos
 		}
 		return nil, err
 	}
+	// 写操作后失效缓存
+	content_database.InvalidatePostCache(ctx, req.SchoolId, req.PostId)
 	return &pb.UpdatePostResponse{Success: true}, nil
 }
 
@@ -240,6 +243,9 @@ func (s *ContentServiceServer) DeletePost(ctx context.Context, req *pb.DeletePos
 		}
 		return nil, err
 	}
+	// 写操作后失效缓存 + 列表缓存
+	content_database.InvalidatePostCache(ctx, req.SchoolId, req.PostId)
+	content_database.InvalidatePostListCache(ctx, req.SchoolId)
 	return &pb.DeletePostResponse{Success: true}, nil
 }
 
@@ -294,6 +300,8 @@ func (s *ContentServiceServer) LikePost(ctx context.Context, req *pb.LikePostReq
 	}
 	if added {
 		repo.IncLikesCount(req.PostId)
+		// 点赞数变更后失效缓存，避免返回旧的 likes_count
+		content_database.InvalidatePostCache(ctx, req.SchoolId, req.PostId)
 		// 首次点赞 → 发布 MQ 事件通知帖子作者
 		post, _ := repo.GetByID(req.SchoolId, req.PostId)
 		if post != nil && post.UserID != req.UserId {
@@ -325,6 +333,8 @@ func (s *ContentServiceServer) UnlikePost(ctx context.Context, req *pb.UnlikePos
 	}
 	if removed {
 		repo.DecLikesCount(req.PostId)
+		// 点赞数变更后失效缓存
+		content_database.InvalidatePostCache(ctx, req.SchoolId, req.PostId)
 	}
 
 	post, err := repo.GetByID(req.SchoolId, req.PostId)
@@ -800,6 +810,9 @@ func (s *ContentServiceServer) markPostStatus(ctx context.Context, schoolID, pos
 		return nil, fmt.Errorf("状态变更失败: %w", err)
 	}
 
+	// 状态变更后失效缓存（审核绕过防护：下架/拒绝的帖子不应在缓存中继续可见）
+	content_database.InvalidatePostCache(ctx, schoolID, postID)
+
 	// 重新查询最新状态
 	post, _ = repo.GetByID(schoolID, postID)
 	return toPbPost(post), nil
@@ -824,6 +837,8 @@ func (s *ContentServiceServer) RenewPost(ctx context.Context, schoolID, postID, 
 	if err := repo.UpdateOwned(schoolID, userID, postID, fields); err != nil {
 		return fmt.Errorf("续期失败: %w", err)
 	}
+	// 续期后失效缓存（过期时间变更）
+	content_database.InvalidatePostCache(ctx, schoolID, postID)
 	log.Printf("[content-service] 帖子续期成功 post=%d new_expired=%s", postID, newExpired.Format(time.RFC3339))
 	return nil
 }

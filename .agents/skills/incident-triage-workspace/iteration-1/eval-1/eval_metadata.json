@@ -1,0 +1,6 @@
+﻿{
+  "eval_id": 1,
+  "eval_name": "p2-image-broken",
+  "prompt": "P2 事故：用户发帖图片裂图...",
+  "assertions": ["有应急措施评估", "复现步骤可执行 3 次一致", "输出包含完整报告"]
+}

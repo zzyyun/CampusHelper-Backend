@@ -77,7 +77,8 @@ func (s *TaskServiceServer) GetTask(ctx context.Context, req *task_pb.GetTaskReq
 		return nil, status.Error(codes.InvalidArgument, "参数不合法")
 	}
 
-	t, err := repo.GetByID(req.SchoolId, req.TaskId)
+	// 使用 Redis 缓存加速读取（Cache-Aside + 穿透防护）
+	t, err := repo.GetByIDWithCache(ctx, req.SchoolId, req.TaskId)
 	if err != nil {
 		if err == repo.ErrNotFound {
 			return nil, status.Error(codes.NotFound, "任务不存在")
@@ -173,6 +174,9 @@ func (s *TaskServiceServer) UpdateTask(ctx context.Context, req *task_pb.UpdateT
 		return nil, err
 	}
 
+	// 写操作后失效缓存
+	repo.InvalidateTaskCache(ctx, req.SchoolId, req.TaskId)
+
 	updated, _ := repo.GetByID(req.SchoolId, req.TaskId)
 	return toPbTask(updated, req.UserId), nil
 }
@@ -198,6 +202,8 @@ func (s *TaskServiceServer) DeleteTask(ctx context.Context, req *task_pb.DeleteT
 	if err := repo.SoftDelete(req.SchoolId, req.UserId, req.TaskId); err != nil {
 		return nil, err
 	}
+	// 写操作后失效缓存
+	repo.InvalidateTaskCache(ctx, req.SchoolId, req.TaskId)
 	return &common_pb.BaseResponse{Code: 0, Message: "已删除"}, nil
 }
 
@@ -225,6 +231,9 @@ func (s *TaskServiceServer) ClaimTask(ctx context.Context, req *task_pb.ClaimTas
 		}
 	}
 
+	// 接单成功后失效缓存（状态变更）
+	repo.InvalidateTaskCache(ctx, req.SchoolId, req.TaskId)
+
 	// 返回发布者的联系方式给接单者
 	t, err := repo.GetByID(req.SchoolId, req.TaskId)
 	if err != nil {
@@ -249,6 +258,8 @@ func (s *TaskServiceServer) CompleteTask(ctx context.Context, req *task_pb.Compl
 		}
 		return nil, err
 	}
+	// 写操作后失效缓存
+	repo.InvalidateTaskCache(ctx, req.SchoolId, req.TaskId)
 	return &common_pb.BaseResponse{Code: 0, Message: "已完成"}, nil
 }
 
@@ -270,6 +281,8 @@ func (s *TaskServiceServer) CancelTask(ctx context.Context, req *task_pb.CancelT
 			return nil, err
 		}
 	}
+	// 写操作后失效缓存
+	repo.InvalidateTaskCache(ctx, req.SchoolId, req.TaskId)
 	return &common_pb.BaseResponse{Code: 0, Message: "已取消"}, nil
 }
 

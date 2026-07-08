@@ -27,6 +27,42 @@ type MysqlConfig struct {
 	// key: 服务名（user/content/task/...），value: 数据库名
 	// 如果 map 为空，自动用 UserDatabase/ContentDatabase 等具体字段填充
 	Databases map[string]string `mapstructure:"databases"`
+	// 连接池配置（可选，未配置时使用 4C8G 环境默认值）
+	Pool MysqlPoolConfig `mapstructure:"pool"`
+}
+
+// MysqlPoolConfig 数据库连接池参数，按4C8G ECS + RDS 场景调优
+type MysqlPoolConfig struct {
+	MaxIdleConns    int `mapstructure:"maxIdleConns"`    // 空闲连接数（默认25，保持连接预热）
+	MaxOpenConns    int `mapstructure:"maxOpenConns"`    // 最大连接数（默认200，RDS max_connections/服务数）
+	ConnMaxLifetime int `mapstructure:"connMaxLifetime"` // 连接最大存活时间（秒，默认3600=1h）
+	ConnMaxIdleTime int `mapstructure:"connMaxIdleTime"` // 空闲连接最大存活时间（秒，默认600=10min）
+}
+
+// DefaultPoolConfig 4C8G ECS + RDS 推荐默认值
+var DefaultPoolConfig = MysqlPoolConfig{
+	MaxIdleConns:    25,
+	MaxOpenConns:    200,
+	ConnMaxLifetime: 3600,
+	ConnMaxIdleTime: 600,
+}
+
+// GetPool 返回连接池配置，未配置字段使用默认值
+func (m MysqlConfig) GetPool() MysqlPoolConfig {
+	p := m.Pool
+	if p.MaxIdleConns <= 0 {
+		p.MaxIdleConns = DefaultPoolConfig.MaxIdleConns
+	}
+	if p.MaxOpenConns <= 0 {
+		p.MaxOpenConns = DefaultPoolConfig.MaxOpenConns
+	}
+	if p.ConnMaxLifetime <= 0 {
+		p.ConnMaxLifetime = DefaultPoolConfig.ConnMaxLifetime
+	}
+	if p.ConnMaxIdleTime <= 0 {
+		p.ConnMaxIdleTime = DefaultPoolConfig.ConnMaxIdleTime
+	}
+	return p
 }
 
 // DBName 返回指定服务对应的数据库名。
