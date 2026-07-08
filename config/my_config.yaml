@@ -98,8 +98,8 @@ service:
 # AI Moderation 服务配置（v3.0 智能审核）
 aiModeration:
   modelPath: "/models/moderation_v1.onnx"
-  modelVersion: "v1.0-mock"
-  modelHash: ""
+  modelVersion: "v1.0-onnx"
+  modelHash: "a092927576be0a4884f791415fd375a702c09f1f10411295c56728404a5ff3e2"
   enabled: false  # mock 模式（true=真实 ONNX 推理, false=固定返回 PASS）
   timeoutMs: 800
   syncTimeoutMs: 800

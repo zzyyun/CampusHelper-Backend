@@ -22,3 +22,6 @@ config/campus.pem
 .claude/hooks/notifications.log
 .claude/worktrees/
 worktrees/
+
+# ONNX 模型文件（二进制大文件，不入仓）
+models/
