@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	content_db "go_projects/praProject1/cmd/content/model"
+	content_database "go_projects/praProject1/cmd/content/database"
 	content_service "go_projects/praProject1/cmd/content/service"
 	pb "go_projects/praProject1/PB/pb/content_pb"
 	"go_projects/praProject1/config"
@@ -17,6 +18,7 @@ import (
 	"go_projects/praProject1/pkg/discovery"
 	es_pkg "go_projects/praProject1/pkg/es"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
+	"go_projects/praProject1/pkg/rdb"
 	"go_projects/praProject1/pkg/tracer"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -50,6 +52,14 @@ func main() {
 		log.Fatalf("auto-migrate: %v", err)
 	}
 	fmt.Println("[content-service] MySQL migrated")
+
+	// ── Redis + 帖子缓存层 ─────────────────────────────────────────────────
+	if err := rdb.InitRedis(); err != nil {
+		log.Printf("[content-service] Redis 连接失败（缓存降级）: %v", err)
+	} else {
+		content_database.InitPostCache()
+		fmt.Println("[content-service] Redis 缓存层已启用")
+	}
 
 	// ── etcd ─────────────────────────────────────────────────────────────────
 	pkg_etcd.InitEtcd()
