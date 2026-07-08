@@ -109,6 +109,11 @@ func (m *ConfigManager) ReloadCount() int {
 }
 
 // Decide 根据当前阈值和概率做出决策。
+//
+// 阈值语义（PRD § Feature 1）：
+//   - prob ≥ blockThreshold → BLOCK
+//   - prob ≥ reviewThreshold → REVIEW
+//   - otherwise → PASS
 func (m *ConfigManager) Decide(prob float32) types.Result {
 	m.mu.RLock()
 	thresholds := m.thresholds

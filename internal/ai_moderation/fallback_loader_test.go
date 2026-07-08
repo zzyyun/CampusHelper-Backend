@@ -241,3 +241,140 @@ func TestFallbackLoader_NoPrimary(t *testing.T) {
 		t.Errorf("version = %s, want fallback-only", result.ModelVersion)
 	}
 }
+
+// ─── TDD 边界测试 ────────────────────────────────────────────────────────────
+
+// FallbackLoader: Close 双 loader 都返回错误时，应返回第一个错误
+type mockCloseError struct {
+	*MockLoader
+	closeErr error
+}
+
+func (m *mockCloseError) Close() error { return m.closeErr }
+
+func TestFallbackLoader_CloseBothErrors(t *testing.T) {
+	primary := &mockCloseError{NewMockLoader("p"), errors.New("primary close err")}
+	fallback := &mockCloseError{NewMockLoader("f"), errors.New("fallback close err")}
+	loader := NewFallbackLoader(primary, fallback, DefaultFallbackConfig())
+
+	err := loader.Close()
+	if err == nil {
+		t.Fatal("Close should return error")
+	}
+	if err.Error() != "primary close err" {
+		t.Errorf("should return first error, got: %v", err)
+	}
+}
+
+// FallbackLoader: 降级后并发 Infer 不 panic
+func TestFallbackLoader_DegradedConcurrentInfer(t *testing.T) {
+	primary := &mockFailLoader{err: errors.New("fail")}
+	fallback := NewMockLoader("fallback-concurrent")
+	loader := NewFallbackLoader(primary, fallback, FallbackConfig{
+		MaxConsecutiveErrors: 1,
+		AlertOnDegrade:        false,
+	})
+
+	// 触发降级
+	_, _ = loader.Infer(context.Background(), "trigger")
+
+	var wg sync.WaitGroup
+	var panicCount int32
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					atomic.AddInt32(&panicCount, 1)
+				}
+				wg.Done()
+			}()
+			_, _ = loader.Infer(context.Background(), "concurrent degraded")
+		}()
+	}
+	wg.Wait()
+
+	if panicCount > 0 {
+		t.Errorf("degraded concurrent infer panicked %d times", panicCount)
+	}
+}
+
+// ConfigManager: 极限边界 block=1.0, review=0.0 应合法
+func TestConfigManager_ThresholdBoundaryValues(t *testing.T) {
+	loader := NewMockLoader("v1.0-boundary")
+	mgr := NewConfigManager(loader, DefaultThresholdConfig())
+
+	err := mgr.UpdateThresholds(1.0, 0.0)
+	if err != nil {
+		t.Fatalf("block=1.0, review=0.0 should be valid, got: %v", err)
+	}
+
+	th := mgr.GetThresholds()
+	if th.BlockThreshold != 1.0 || th.ReviewThreshold != 0.0 {
+		t.Errorf("thresholds = {block=%f, review=%f}, want {1.0, 0.0}", th.BlockThreshold, th.ReviewThreshold)
+	}
+
+	// Decide 在极限阈值下的行为
+	if got := mgr.Decide(1.0); got != types.ResultBlock {
+		t.Errorf("Decide(1.0) with block=1.0 → %v, want BLOCK", got)
+	}
+	// review=0.0 时：prob ≥ 0.0 → REVIEW（PRD 语义：≥ reviewThreshold 即进 REVIEW）
+	if got := mgr.Decide(0.0); got != types.ResultReview {
+		t.Errorf("Decide(0.0) with review=0.0 → %v, want REVIEW (≥ 0.0)", got)
+	}
+	// review=0.0 时：prob < 0.0 不可能（概率非负），所以 0.0 是 REVIEW 的下界
+	if got := mgr.Decide(0.5); got != types.ResultReview {
+		t.Errorf("Decide(0.5) with review=0.0, block=1.0 → %v, want REVIEW", got)
+	}
+}
+
+// ConfigManager: block=review 应拒绝
+func TestConfigManager_BlockEqualsReview(t *testing.T) {
+	loader := NewMockLoader("v1.0")
+	mgr := NewConfigManager(loader, DefaultThresholdConfig())
+	err := mgr.UpdateThresholds(0.8, 0.8)
+	if err == nil {
+		t.Error("block == review should return error")
+	}
+}
+
+// ConfigManager: 并发 Decide + UpdateThresholds 不应 race
+func TestConfigManager_RaceDecideAndUpdate(t *testing.T) {
+	loader := NewMockLoader("v1.0-race")
+	mgr := NewConfigManager(loader, DefaultThresholdConfig())
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
+	// 不断更新阈值
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			block := float32(0.7) + float32(i%3)*0.1
+			_ = mgr.UpdateThresholds(block, 0.3)
+		}(i)
+	}
+
+	// 同时不断 Decide
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = mgr.Decide(0.6)
+		}()
+	}
+
+	// 同时读 loader
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = mgr.GetLoader()
+		}()
+	}
+
+	wg.Wait()
+	close(done)
+	_ = done
+}

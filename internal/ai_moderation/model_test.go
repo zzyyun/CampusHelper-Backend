@@ -252,3 +252,72 @@ func TestService_ModerateBatch_Concurrency(t *testing.T) {
 		t.Errorf("mock should return 10 PASS, got %d", resp.PassCount)
 	}
 }
+
+// ─── TDD 边界测试 ────────────────────────────────────────────────────────────
+
+// ModerateBatch: concurrency=0 应使用默认值 4
+func TestService_ModerateBatch_DefaultConcurrency(t *testing.T) {
+	loader := NewMockLoader("v1.0-default-conc")
+	svc := NewService(loader)
+
+	items := make([]*ai_moderation_pb.ModerateTextRequest, 5)
+	for i := range items {
+		items[i] = &ai_moderation_pb.ModerateTextRequest{Text: "test"}
+	}
+
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 0, // 应使用默认值
+	})
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	if resp.TotalCount != 5 {
+		t.Errorf("total = %d, want 5", resp.TotalCount)
+	}
+}
+
+// ModerateBatch: concurrency 超过上限 8 应被截断
+func TestService_ModerateBatch_MaxConcurrencyCap(t *testing.T) {
+	loader := NewMockLoader("v1.0-cap")
+	svc := NewService(loader)
+
+	items := make([]*ai_moderation_pb.ModerateTextRequest, 3)
+	for i := range items {
+		items[i] = &ai_moderation_pb.ModerateTextRequest{Text: "test"}
+	}
+
+	// concurrency=100 超过上限 8，应被截断为 8
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 100,
+	})
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	if resp.PassCount != 3 {
+		t.Errorf("pass = %d, want 3", resp.PassCount)
+	}
+}
+
+// ModerateBatch: LatencyMs 应 >= 0
+func TestService_ModerateBatch_LatencyNonNegative(t *testing.T) {
+	loader := NewMockLoader("v1.0-latency")
+	svc := NewService(loader)
+
+	items := []*ai_moderation_pb.ModerateTextRequest{
+		{Text: "hello"},
+		{Text: "world"},
+	}
+
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 2,
+	})
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	if resp.TotalLatencyMs < 0 {
+		t.Errorf("latency = %d, want >= 0", resp.TotalLatencyMs)
+	}
+}
