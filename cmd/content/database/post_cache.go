@@ -13,15 +13,9 @@ import (
 )
 
 // 缓存 TTL 配置
-var (
-	postTTL = cache.NewTTL(
-		10*time.Minute, // 有数据缓存 10 分钟
-		30*time.Second,  // 空值哨兵 30 秒（DB 中不存在的帖子，短时间内不再穿透）
-	)
-	postListTTL = cache.NewTTL(
-		2*time.Minute, // 列表缓存 2 分钟（更新频率高，TTL 短）
-		10*time.Second,
-	)
+var postTTL = cache.NewTTL(
+	10*time.Minute, // 有数据缓存 10 分钟
+	30*time.Second,  // 空值哨兵 30 秒（DB 中不存在的帖子，短时间内不再穿透）
 )
 
 // postCacheClient 是帖子缓存的全局客户端，由 InitPostCache 初始化
