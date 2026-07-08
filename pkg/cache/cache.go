@@ -50,12 +50,19 @@ func (sf *singleflight) Do(key string, fn func() (json.RawMessage, error)) (json
 	sf.m[key] = c
 	sf.mu.Unlock()
 
-	c.val, c.err = fn()
-	c.wg.Done()
-
-	sf.mu.Lock()
-	delete(sf.m, key)
-	sf.mu.Unlock()
+	// panic 保护：fn panic 时仍要 Done + 清理 map，避免永久阻塞所有等待者
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				c.err = fmt.Errorf("singleflight: panic recovered: %v", r)
+			}
+			c.wg.Done()
+			sf.mu.Lock()
+			delete(sf.m, key)
+			sf.mu.Unlock()
+		}()
+		c.val, c.err = fn()
+	}()
 
 	return c.val, c.err
 }

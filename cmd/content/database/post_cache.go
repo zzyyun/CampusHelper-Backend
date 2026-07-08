@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	content_db "go_projects/praProject1/cmd/content/model"
@@ -74,6 +75,10 @@ func InvalidatePostListCache(ctx context.Context, schoolID int64) {
 	var keys []string
 	for iter.Next(ctx) {
 		keys = append(keys, iter.Val())
+	}
+	// 检查 SCAN 迭代过程中是否有错误（Redis 中途失败时记录日志）
+	if err := iter.Err(); err != nil {
+		log.Printf("[cache] SCAN error pattern=%s: %v", pattern, err)
 	}
 	if len(keys) > 0 {
 		_ = cache.Delete(ctx, postCacheClient, keys...)
