@@ -20,6 +20,9 @@ service AIModerationService {
   // 同步单条文本审核（Content Service.CreatePost 路径同步调用）
   rpc ModerateText (ModerateTextRequest) returns (ModerateTextResponse);
 
+  // 批量文本审核（多条文本并发推理，结果聚合返回）
+  rpc ModerateBatch (ModerateBatchRequest) returns (ModerateBatchResponse);
+
   // 健康检查（grpc_health_v1 标准接口之外，额外提供业务级 health 检查）
   rpc HealthCheck (google.protobuf.Empty) returns (HealthCheckResponse);
 }
@@ -54,6 +57,22 @@ message ModerateTextResponse {
   int64 latency_ms = 4;
   string model_version = 5;
   bool fallback_used = 6;   // true 表示走了降级逻辑（mock 或 fallback）
+}
+
+// ─── ModerateBatch ───────────────────────────────────────────────────────────
+
+message ModerateBatchRequest {
+  repeated ModerateTextRequest items = 1; // 待审核文本列表（上限 20 条）
+  int32 max_concurrency = 2;              // 最大并发推理数（默认 4，上限 8）
+}
+
+message ModerateBatchResponse {
+  repeated ModerateTextResponse results = 1; // 审核结果列表（与 items 一一对应）
+  int32 total_count = 2;                     // 总条数
+  int32 pass_count = 3;                      // PASS 数量
+  int32 review_count = 4;                    // REVIEW 数量
+  int32 block_count = 5;                     // BLOCK 数量
+  int64 total_latency_ms = 6;                // 批量总耗时（含并发）
 }
 
 // ─── HealthCheck ──────────────────────────────────────────────────────────────

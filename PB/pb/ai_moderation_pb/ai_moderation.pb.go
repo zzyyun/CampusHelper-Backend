@@ -165,7 +165,7 @@ func (x HealthCheckResponse_ServingStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use HealthCheckResponse_ServingStatus.Descriptor instead.
 func (HealthCheckResponse_ServingStatus) EnumDescriptor() ([]byte, []int) {
-	return file_PB_ai_moderation_proto_rawDescGZIP(), []int{2, 0}
+	return file_PB_ai_moderation_proto_rawDescGZIP(), []int{4, 0}
 }
 
 type ModerateTextRequest struct {
@@ -320,6 +320,142 @@ func (x *ModerateTextResponse) GetFallbackUsed() bool {
 	return false
 }
 
+type ModerateBatchRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Items          []*ModerateTextRequest `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`                                          // 待审核文本列表（上限 20 条）
+	MaxConcurrency int32                  `protobuf:"varint,2,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"` // 最大并发推理数（默认 4，上限 8）
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ModerateBatchRequest) Reset() {
+	*x = ModerateBatchRequest{}
+	mi := &file_PB_ai_moderation_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModerateBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModerateBatchRequest) ProtoMessage() {}
+
+func (x *ModerateBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_ai_moderation_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModerateBatchRequest.ProtoReflect.Descriptor instead.
+func (*ModerateBatchRequest) Descriptor() ([]byte, []int) {
+	return file_PB_ai_moderation_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ModerateBatchRequest) GetItems() []*ModerateTextRequest {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *ModerateBatchRequest) GetMaxConcurrency() int32 {
+	if x != nil {
+		return x.MaxConcurrency
+	}
+	return 0
+}
+
+type ModerateBatchResponse struct {
+	state          protoimpl.MessageState  `protogen:"open.v1"`
+	Results        []*ModerateTextResponse `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`                                        // 审核结果列表（与 items 一一对应）
+	TotalCount     int32                   `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`               // 总条数
+	PassCount      int32                   `protobuf:"varint,3,opt,name=pass_count,json=passCount,proto3" json:"pass_count,omitempty"`                  // PASS 数量
+	ReviewCount    int32                   `protobuf:"varint,4,opt,name=review_count,json=reviewCount,proto3" json:"review_count,omitempty"`            // REVIEW 数量
+	BlockCount     int32                   `protobuf:"varint,5,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`               // BLOCK 数量
+	TotalLatencyMs int64                   `protobuf:"varint,6,opt,name=total_latency_ms,json=totalLatencyMs,proto3" json:"total_latency_ms,omitempty"` // 批量总耗时（含并发）
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ModerateBatchResponse) Reset() {
+	*x = ModerateBatchResponse{}
+	mi := &file_PB_ai_moderation_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModerateBatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModerateBatchResponse) ProtoMessage() {}
+
+func (x *ModerateBatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_PB_ai_moderation_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModerateBatchResponse.ProtoReflect.Descriptor instead.
+func (*ModerateBatchResponse) Descriptor() ([]byte, []int) {
+	return file_PB_ai_moderation_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ModerateBatchResponse) GetResults() []*ModerateTextResponse {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+func (x *ModerateBatchResponse) GetTotalCount() int32 {
+	if x != nil {
+		return x.TotalCount
+	}
+	return 0
+}
+
+func (x *ModerateBatchResponse) GetPassCount() int32 {
+	if x != nil {
+		return x.PassCount
+	}
+	return 0
+}
+
+func (x *ModerateBatchResponse) GetReviewCount() int32 {
+	if x != nil {
+		return x.ReviewCount
+	}
+	return 0
+}
+
+func (x *ModerateBatchResponse) GetBlockCount() int32 {
+	if x != nil {
+		return x.BlockCount
+	}
+	return 0
+}
+
+func (x *ModerateBatchResponse) GetTotalLatencyMs() int64 {
+	if x != nil {
+		return x.TotalLatencyMs
+	}
+	return 0
+}
+
 type HealthCheckResponse struct {
 	state              protoimpl.MessageState            `protogen:"open.v1"`
 	Status             HealthCheckResponse_ServingStatus `protobuf:"varint,1,opt,name=status,proto3,enum=pb.HealthCheckResponse_ServingStatus" json:"status,omitempty"`
@@ -334,7 +470,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_PB_ai_moderation_proto_msgTypes[2]
+	mi := &file_PB_ai_moderation_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +482,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PB_ai_moderation_proto_msgTypes[2]
+	mi := &file_PB_ai_moderation_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,7 +495,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_PB_ai_moderation_proto_rawDescGZIP(), []int{2}
+	return file_PB_ai_moderation_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *HealthCheckResponse) GetStatus() HealthCheckResponse_ServingStatus {
@@ -435,7 +571,20 @@ const file_PB_ai_moderation_proto_rawDesc = "" +
 	"\n" +
 	"\x06SYNCED\x10\x00\x12\f\n" +
 	"\bDEGRADED\x10\x01\x12\t\n" +
-	"\x05ASYNC\x10\x02\"\xbb\x02\n" +
+	"\x05ASYNC\x10\x02\"n\n" +
+	"\x14ModerateBatchRequest\x12-\n" +
+	"\x05items\x18\x01 \x03(\v2\x17.pb.ModerateTextRequestR\x05items\x12'\n" +
+	"\x0fmax_concurrency\x18\x02 \x01(\x05R\x0emaxConcurrency\"\xf9\x01\n" +
+	"\x15ModerateBatchResponse\x122\n" +
+	"\aresults\x18\x01 \x03(\v2\x18.pb.ModerateTextResponseR\aresults\x12\x1f\n" +
+	"\vtotal_count\x18\x02 \x01(\x05R\n" +
+	"totalCount\x12\x1d\n" +
+	"\n" +
+	"pass_count\x18\x03 \x01(\x05R\tpassCount\x12!\n" +
+	"\freview_count\x18\x04 \x01(\x05R\vreviewCount\x12\x1f\n" +
+	"\vblock_count\x18\x05 \x01(\x05R\n" +
+	"blockCount\x12(\n" +
+	"\x10total_latency_ms\x18\x06 \x01(\x03R\x0etotalLatencyMs\"\xbb\x02\n" +
 	"\x13HealthCheckResponse\x12=\n" +
 	"\x06status\x18\x01 \x01(\x0e2%.pb.HealthCheckResponse.ServingStatusR\x06status\x12!\n" +
 	"\fmodel_loaded\x18\x02 \x01(\bR\vmodelLoaded\x12#\n" +
@@ -445,9 +594,10 @@ const file_PB_ai_moderation_proto_rawDesc = "" +
 	"\x10intra_op_threads\x18\x06 \x01(\x05R\x0eintraOpThreads\"-\n" +
 	"\rServingStatus\x12\v\n" +
 	"\aSERVING\x10\x00\x12\x0f\n" +
-	"\vNOT_SERVING\x10\x012\x98\x01\n" +
+	"\vNOT_SERVING\x10\x012\xde\x01\n" +
 	"\x13AIModerationService\x12A\n" +
-	"\fModerateText\x12\x17.pb.ModerateTextRequest\x1a\x18.pb.ModerateTextResponse\x12>\n" +
+	"\fModerateText\x12\x17.pb.ModerateTextRequest\x1a\x18.pb.ModerateTextResponse\x12D\n" +
+	"\rModerateBatch\x12\x18.pb.ModerateBatchRequest\x1a\x19.pb.ModerateBatchResponse\x12>\n" +
 	"\vHealthCheck\x12\x16.google.protobuf.Empty\x1a\x17.pb.HealthCheckResponseB0Z.go_projects/praProject1/PB/pb/ai_moderation_pbb\x06proto3"
 
 var (
@@ -463,29 +613,35 @@ func file_PB_ai_moderation_proto_rawDescGZIP() []byte {
 }
 
 var file_PB_ai_moderation_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_PB_ai_moderation_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_PB_ai_moderation_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_PB_ai_moderation_proto_goTypes = []any{
 	(ModerateTextResponse_Result)(0),       // 0: pb.ModerateTextResponse.Result
 	(ModerateTextResponse_Status)(0),       // 1: pb.ModerateTextResponse.Status
 	(HealthCheckResponse_ServingStatus)(0), // 2: pb.HealthCheckResponse.ServingStatus
 	(*ModerateTextRequest)(nil),            // 3: pb.ModerateTextRequest
 	(*ModerateTextResponse)(nil),           // 4: pb.ModerateTextResponse
-	(*HealthCheckResponse)(nil),            // 5: pb.HealthCheckResponse
-	(*empty.Empty)(nil),                    // 6: google.protobuf.Empty
+	(*ModerateBatchRequest)(nil),           // 5: pb.ModerateBatchRequest
+	(*ModerateBatchResponse)(nil),          // 6: pb.ModerateBatchResponse
+	(*HealthCheckResponse)(nil),            // 7: pb.HealthCheckResponse
+	(*empty.Empty)(nil),                    // 8: google.protobuf.Empty
 }
 var file_PB_ai_moderation_proto_depIdxs = []int32{
 	0, // 0: pb.ModerateTextResponse.result:type_name -> pb.ModerateTextResponse.Result
 	1, // 1: pb.ModerateTextResponse.status:type_name -> pb.ModerateTextResponse.Status
-	2, // 2: pb.HealthCheckResponse.status:type_name -> pb.HealthCheckResponse.ServingStatus
-	3, // 3: pb.AIModerationService.ModerateText:input_type -> pb.ModerateTextRequest
-	6, // 4: pb.AIModerationService.HealthCheck:input_type -> google.protobuf.Empty
-	4, // 5: pb.AIModerationService.ModerateText:output_type -> pb.ModerateTextResponse
-	5, // 6: pb.AIModerationService.HealthCheck:output_type -> pb.HealthCheckResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	3, // 2: pb.ModerateBatchRequest.items:type_name -> pb.ModerateTextRequest
+	4, // 3: pb.ModerateBatchResponse.results:type_name -> pb.ModerateTextResponse
+	2, // 4: pb.HealthCheckResponse.status:type_name -> pb.HealthCheckResponse.ServingStatus
+	3, // 5: pb.AIModerationService.ModerateText:input_type -> pb.ModerateTextRequest
+	5, // 6: pb.AIModerationService.ModerateBatch:input_type -> pb.ModerateBatchRequest
+	8, // 7: pb.AIModerationService.HealthCheck:input_type -> google.protobuf.Empty
+	4, // 8: pb.AIModerationService.ModerateText:output_type -> pb.ModerateTextResponse
+	6, // 9: pb.AIModerationService.ModerateBatch:output_type -> pb.ModerateBatchResponse
+	7, // 10: pb.AIModerationService.HealthCheck:output_type -> pb.HealthCheckResponse
+	8, // [8:11] is the sub-list for method output_type
+	5, // [5:8] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_PB_ai_moderation_proto_init() }
@@ -499,7 +655,7 @@ func file_PB_ai_moderation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_PB_ai_moderation_proto_rawDesc), len(file_PB_ai_moderation_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

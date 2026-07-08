@@ -1,5 +1,5 @@
 # 校园互助平台 - 完整微服务编排
-# 包含：6 个微服务（gateway/user/content/task/message/file）+ etcd + RabbitMQ + MinIO + ES
+# 包含：7 个微服务（gateway/user/content/task/message/file/ai-moderation）+ etcd + RabbitMQ + MinIO + ES
 # 不含：MySQL/Redis（使用阿里云云数据库）
 #
 # 用法：
@@ -407,6 +407,46 @@ services:
           memory: 128M
     restart: always
 
+  # ==================== AI 审核服务 ====================
+  ai-moderation:
+    build:
+      context: ../../
+      dockerfile: build/docker/ai-moderation.Dockerfile
+    container_name: campus-ai-moderation
+    ports:
+      - "50061:50061"   # gRPC
+      - "9091:9091"     # Prometheus /metrics
+    volumes:
+      - ai-moderation-models:/models:ro  # ONNX 模型文件（只读）
+    environment:
+      - GIN_MODE=release
+      - SERVICE_AI_MODERATION_ADDRESS=0.0.0.0:50061
+      - SERVICE_AI_MODERATION_NAME=ai-moderation
+      - ETCD_ENDPOINTS=etcd:2379
+      - METRICS_AIMODERATION_PORT=9091
+      - AIMODERATION_ENABLED=true
+      - AIMODERATION_MODELPATH=/models/moderation_v1.onnx
+      - AIMODERATION_MODELVERSION=v1.0-onnx
+      - AIMODERATION_TIMEOUTMS=800
+      - AIMODERATION_INTRAOPNUMTHREADS=4
+    networks:
+      - campus-net
+    depends_on:
+      etcd:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9091/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: always
+
 volumes:
   etcd-data:
     name: campus-etcd-data
@@ -418,6 +458,8 @@ volumes:
     name: campus-minio-data
   es-data:
     name: campus-es-data
+  ai-moderation-models:
+    name: campus-ai-moderation-models
 
 networks:
   campus-net:

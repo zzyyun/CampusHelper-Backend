@@ -34,6 +34,15 @@ var (
 		[]string{"mode"}, // sync / async
 	)
 
+	// BatchLatencySeconds 批量审核总延迟（秒，无 label 避免高基数）
+	BatchLatencySeconds = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "ai_moderation_batch_latency_seconds",
+			Help:    "Batch moderation total latency in seconds.",
+			Buckets: []float64{0.1, 0.3, 0.5, 1.0, 2.0, 3.0, 5.0},
+		},
+	)
+
 	// CircuitState 客户端熔断器状态
 	CircuitState = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{

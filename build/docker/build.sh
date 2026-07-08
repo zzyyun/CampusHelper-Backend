@@ -20,7 +20,7 @@ SERVICE="${1:-all}"
 TAG="${2:-dev}"
 MODE="${3:-${ALPINE_MODE:-default}}"
 
-SERVICES=(gateway user content task message file)
+SERVICES=(gateway user content task message file ai-moderation)
 
 # 根据模式设置 build-arg
 BUILD_ARGS=()

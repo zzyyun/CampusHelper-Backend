@@ -20,8 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AIModerationService_ModerateText_FullMethodName = "/pb.AIModerationService/ModerateText"
-	AIModerationService_HealthCheck_FullMethodName  = "/pb.AIModerationService/HealthCheck"
+	AIModerationService_ModerateText_FullMethodName  = "/pb.AIModerationService/ModerateText"
+	AIModerationService_ModerateBatch_FullMethodName = "/pb.AIModerationService/ModerateBatch"
+	AIModerationService_HealthCheck_FullMethodName   = "/pb.AIModerationService/HealthCheck"
 )
 
 // AIModerationServiceClient is the client API for AIModerationService service.
@@ -42,6 +43,8 @@ const (
 type AIModerationServiceClient interface {
 	// 同步单条文本审核（Content Service.CreatePost 路径同步调用）
 	ModerateText(ctx context.Context, in *ModerateTextRequest, opts ...grpc.CallOption) (*ModerateTextResponse, error)
+	// 批量文本审核（多条文本并发推理，结果聚合返回）
+	ModerateBatch(ctx context.Context, in *ModerateBatchRequest, opts ...grpc.CallOption) (*ModerateBatchResponse, error)
 	// 健康检查（grpc_health_v1 标准接口之外，额外提供业务级 health 检查）
 	HealthCheck(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
@@ -58,6 +61,16 @@ func (c *aIModerationServiceClient) ModerateText(ctx context.Context, in *Modera
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModerateTextResponse)
 	err := c.cc.Invoke(ctx, AIModerationService_ModerateText_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIModerationServiceClient) ModerateBatch(ctx context.Context, in *ModerateBatchRequest, opts ...grpc.CallOption) (*ModerateBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModerateBatchResponse)
+	err := c.cc.Invoke(ctx, AIModerationService_ModerateBatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,6 +105,8 @@ func (c *aIModerationServiceClient) HealthCheck(ctx context.Context, in *empty.E
 type AIModerationServiceServer interface {
 	// 同步单条文本审核（Content Service.CreatePost 路径同步调用）
 	ModerateText(context.Context, *ModerateTextRequest) (*ModerateTextResponse, error)
+	// 批量文本审核（多条文本并发推理，结果聚合返回）
+	ModerateBatch(context.Context, *ModerateBatchRequest) (*ModerateBatchResponse, error)
 	// 健康检查（grpc_health_v1 标准接口之外，额外提供业务级 health 检查）
 	HealthCheck(context.Context, *empty.Empty) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedAIModerationServiceServer()
@@ -106,6 +121,9 @@ type UnimplementedAIModerationServiceServer struct{}
 
 func (UnimplementedAIModerationServiceServer) ModerateText(context.Context, *ModerateTextRequest) (*ModerateTextResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ModerateText not implemented")
+}
+func (UnimplementedAIModerationServiceServer) ModerateBatch(context.Context, *ModerateBatchRequest) (*ModerateBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ModerateBatch not implemented")
 }
 func (UnimplementedAIModerationServiceServer) HealthCheck(context.Context, *empty.Empty) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
@@ -149,6 +167,24 @@ func _AIModerationService_ModerateText_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AIModerationService_ModerateBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModerateBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIModerationServiceServer).ModerateBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIModerationService_ModerateBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIModerationServiceServer).ModerateBatch(ctx, req.(*ModerateBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AIModerationService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(empty.Empty)
 	if err := dec(in); err != nil {
@@ -177,6 +213,10 @@ var AIModerationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ModerateText",
 			Handler:    _AIModerationService_ModerateText_Handler,
+		},
+		{
+			MethodName: "ModerateBatch",
+			Handler:    _AIModerationService_ModerateBatch_Handler,
 		},
 		{
 			MethodName: "HealthCheck",

@@ -151,3 +151,173 @@ func TestService_DegradedResponse(t *testing.T) {
 		t.Error("FallbackUsed should be true")
 	}
 }
+
+func TestService_ModerateBatch_Empty(t *testing.T) {
+	loader := NewMockLoader("v1.0-test")
+	svc := NewService(loader)
+
+	// nil 请求
+	_, err := svc.ModerateBatch(context.Background(), nil)
+	if err == nil {
+		t.Error("nil request should error")
+	}
+
+	// 空 items
+	_, err = svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{Items: nil})
+	if err == nil {
+		t.Error("empty items should error")
+	}
+}
+
+func TestService_ModerateBatch_ExceedsMax(t *testing.T) {
+	loader := NewMockLoader("v1.0-test")
+	svc := NewService(loader)
+
+	items := make([]*ai_moderation_pb.ModerateTextRequest, batchMaxItems+1)
+	for i := range items {
+		items[i] = &ai_moderation_pb.ModerateTextRequest{Text: "test"}
+	}
+
+	_, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{Items: items})
+	if err == nil {
+		t.Error("exceeding max items should error")
+	}
+}
+
+func TestService_ModerateBatch_Success(t *testing.T) {
+	loader := NewMockLoader("v1.0-batch")
+	svc := NewService(loader)
+
+	items := []*ai_moderation_pb.ModerateTextRequest{
+		{Text: "hello world"},
+		{Text: "你好世界"},
+		{Text: "good morning"},
+	}
+
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:         items,
+		MaxConcurrency: 2,
+	})
+	if err != nil {
+		t.Fatalf("ModerateBatch failed: %v", err)
+	}
+
+	if resp.TotalCount != 3 {
+		t.Errorf("expected 3 items, got %d", resp.TotalCount)
+	}
+	if len(resp.Results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(resp.Results))
+	}
+	if resp.PassCount != 3 {
+		t.Errorf("mock mode should return all PASS, got pass=%d review=%d block=%d",
+			resp.PassCount, resp.ReviewCount, resp.BlockCount)
+	}
+	if resp.TotalLatencyMs < 0 {
+		t.Errorf("latency should be >= 0, got %d", resp.TotalLatencyMs)
+	}
+
+	// 验证每个结果
+	for i, r := range resp.Results {
+		if r.Result != ai_moderation_pb.ModerateTextResponse_PASS {
+			t.Errorf("results[%d]: expected PASS, got %v", i, r.Result)
+		}
+		if r.ModelVersion != "v1.0-batch" {
+			t.Errorf("results[%d]: version mismatch: %s", i, r.ModelVersion)
+		}
+	}
+}
+
+func TestService_ModerateBatch_Concurrency(t *testing.T) {
+	loader := NewMockLoader("v1.0-conc")
+	svc := NewService(loader)
+
+	// 10 条文本，限制并发为 2
+	items := make([]*ai_moderation_pb.ModerateTextRequest, 10)
+	for i := range items {
+		items[i] = &ai_moderation_pb.ModerateTextRequest{Text: "test"}
+	}
+
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 2,
+	})
+	if err != nil {
+		t.Fatalf("ModerateBatch failed: %v", err)
+	}
+
+	if resp.TotalCount != 10 {
+		t.Errorf("expected 10, got %d", resp.TotalCount)
+	}
+	if resp.PassCount != 10 {
+		t.Errorf("mock should return 10 PASS, got %d", resp.PassCount)
+	}
+}
+
+// ─── TDD 边界测试 ────────────────────────────────────────────────────────────
+
+// ModerateBatch: concurrency=0 应使用默认值 4
+func TestService_ModerateBatch_DefaultConcurrency(t *testing.T) {
+	loader := NewMockLoader("v1.0-default-conc")
+	svc := NewService(loader)
+
+	items := make([]*ai_moderation_pb.ModerateTextRequest, 5)
+	for i := range items {
+		items[i] = &ai_moderation_pb.ModerateTextRequest{Text: "test"}
+	}
+
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 0, // 应使用默认值
+	})
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	if resp.TotalCount != 5 {
+		t.Errorf("total = %d, want 5", resp.TotalCount)
+	}
+}
+
+// ModerateBatch: concurrency 超过上限 8 应被截断
+func TestService_ModerateBatch_MaxConcurrencyCap(t *testing.T) {
+	loader := NewMockLoader("v1.0-cap")
+	svc := NewService(loader)
+
+	items := make([]*ai_moderation_pb.ModerateTextRequest, 3)
+	for i := range items {
+		items[i] = &ai_moderation_pb.ModerateTextRequest{Text: "test"}
+	}
+
+	// concurrency=100 超过上限 8，应被截断为 8
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 100,
+	})
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	if resp.PassCount != 3 {
+		t.Errorf("pass = %d, want 3", resp.PassCount)
+	}
+}
+
+// ModerateBatch: LatencyMs 应 >= 0
+func TestService_ModerateBatch_LatencyNonNegative(t *testing.T) {
+	loader := NewMockLoader("v1.0-latency")
+	svc := NewService(loader)
+
+	items := []*ai_moderation_pb.ModerateTextRequest{
+		{Text: "hello"},
+		{Text: "world"},
+	}
+
+	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
+		Items:          items,
+		MaxConcurrency: 2,
+	})
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	if resp.TotalLatencyMs < 0 {
+		t.Errorf("latency = %d, want >= 0", resp.TotalLatencyMs)
+	}
+}

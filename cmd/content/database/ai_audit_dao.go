@@ -128,3 +128,71 @@ func GetAIStatusDistribution(since time.Time) (*AIStatusDistribution, error) {
 	}
 	return dist, nil
 }
+
+// CountAIAuditLogsByResult 统计指定 AI 结果的数量
+func CountAIAuditLogsByResult(result model.AIResult, since time.Time) (int64, error) {
+	var count int64
+	err := mustContentDB().Model(&model.AIAuditLog{}).
+		Where("ai_result = ? AND created_at >= ?", result, since).
+		Count(&count).Error
+	return count, err
+}
+
+// GetAIAvgLatency 获取平均推理延迟（毫秒）
+func GetAIAvgLatency(since time.Time) (float64, error) {
+	var avg float64
+	err := mustContentDB().Model(&model.AIAuditLog{}).
+		Select("COALESCE(AVG(latency_ms), 0)").
+		Where("created_at >= ?", since).
+		Scan(&avg).Error
+	return avg, err
+}
+
+// DailyTrendRow 每日趋势数据行
+type DailyTrendRow struct {
+	Date        string `json:"date"`
+	TotalCalls  int64  `json:"total_calls"`
+	PassCount   int64  `json:"pass_count"`
+	BlockCount  int64  `json:"block_count"`
+	ReviewCount int64  `json:"review_count"`
+}
+
+// GetAIDailyTrend 查询近 N 天的每日审核趋势
+func GetAIDailyTrend(since time.Time) ([]DailyTrendRow, error) {
+	var rows []DailyTrendRow
+	err := mustContentDB().Model(&model.AIAuditLog{}).
+		Select("DATE(created_at) as date, COUNT(*) as total_calls, "+
+			"SUM(CASE WHEN ai_result=0 THEN 1 ELSE 0 END) as pass_count, "+
+			"SUM(CASE WHEN ai_result=2 THEN 1 ELSE 0 END) as block_count, "+
+			"SUM(CASE WHEN ai_result=1 THEN 1 ELSE 0 END) as review_count").
+		Where("created_at >= ?", since).
+		Group("DATE(created_at)").
+		Order("date ASC").
+		Scan(&rows).Error
+	return rows, err
+}
+
+// CategoryDistributionRow 类别分布行
+type CategoryDistributionRow struct {
+	Category string `json:"category"`
+	Count    int64  `json:"count"`
+}
+
+// GetAICategoryDistribution 查询违规类别分布（ai_categories 字段 JSON 解析）
+//
+// 注：ai_categories 存储为 JSON 数组字符串如 ["toxic","insult"]，
+// 使用 MySQL JSON_EXTRACT + JSON_TABLE 解析。
+// 若 MySQL 版本不支持 JSON_TABLE，使用 LIKE 模糊匹配。
+func GetAICategoryDistribution(since time.Time, limit int) ([]CategoryDistributionRow, error) {
+	var rows []CategoryDistributionRow
+	// 使用 LIKE 模糊匹配（兼容 MySQL 5.7+）
+	// 实际生产环境建议升级到 MySQL 8.0 并使用 JSON_TABLE
+	err := mustContentDB().Model(&model.AIAuditLog{}).
+		Select("ai_categories as category, COUNT(*) as count").
+		Where("ai_categories != '' AND ai_categories IS NOT NULL AND created_at >= ?", since).
+		Group("ai_categories").
+		Order("count DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	return rows, err
+}
