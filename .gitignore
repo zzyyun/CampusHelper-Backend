@@ -22,3 +22,7 @@ config/campus.pem
 .claude/hooks/notifications.log
 .claude/worktrees/
 worktrees/
+
+# SSH 密钥文件（部署用，不入仓）
+github_actions
+github_actions.pub
