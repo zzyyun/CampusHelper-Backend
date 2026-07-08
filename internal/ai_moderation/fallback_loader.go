@@ -37,9 +37,10 @@ type FallbackLoader struct {
 	config    FallbackConfig
 
 	// 降级状态（0=正常使用 primary，1=已降级使用 fallback）
-	degraded  int32
+	degraded   int32
 	degradeOnce sync.Once
-	mu        sync.RWMutex
+	mu         sync.RWMutex
+	stopCh     chan struct{} // 关闭时通知 recoveryCheck goroutine 退出
 }
 
 // FallbackConfig 降级策略配置。
@@ -71,6 +72,7 @@ func NewFallbackLoader(primary, fallback types.ModelLoader, config FallbackConfi
 		primary:  primary,
 		fallback: fallback,
 		config:   config,
+		stopCh:   make(chan struct{}),
 	}
 }
 
@@ -100,8 +102,15 @@ func (l *FallbackLoader) Version() string {
 	return l.primary.Version()
 }
 
-// Close 释放两个 loader 资源。
+// Close 释放两个 loader 资源，停止 recoveryCheck goroutine。
 func (l *FallbackLoader) Close() error {
+	// 停止 recovery goroutine
+	select {
+	case <-l.stopCh:
+	default:
+		close(l.stopCh)
+	}
+
 	var firstErr error
 	if l.primary != nil {
 		if err := l.primary.Close(); err != nil {
@@ -135,24 +144,29 @@ func (l *FallbackLoader) recordDegrade(err error) {
 	})
 }
 
-// recoveryCheck 定期尝试 primary 恢复。
+// recoveryCheck 定期尝试 primary 恢复（直到恢复成功或 Close 被调用）。
 func (l *FallbackLoader) recoveryCheck() {
 	ticker := time.NewTicker(l.config.RecoveryCheckInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if atomic.LoadInt32(&l.degraded) == 0 {
-			return // 已恢复
-		}
+	for {
+		select {
+		case <-l.stopCh:
+			return // Close 被调用，退出 goroutine
+		case <-ticker.C:
+			if atomic.LoadInt32(&l.degraded) == 0 {
+				return // 已恢复
+			}
 
-		// 尝试用空文本做健康检查
-		_, err := l.primary.Infer(context.Background(), "health check")
-		if err == nil {
-			atomic.StoreInt32(&l.degraded, 0)
-			log.Printf("[FallbackLoader] RECOVERED: primary is healthy again")
-			return
+			// 尝试用空文本做健康检查
+			_, err := l.primary.Infer(context.Background(), "health check")
+			if err == nil {
+				atomic.StoreInt32(&l.degraded, 0)
+				log.Printf("[FallbackLoader] RECOVERED: primary is healthy again")
+				return
+			}
+			log.Printf("[FallbackLoader] recovery check failed: %v (still degraded)", err)
 		}
-		log.Printf("[FallbackLoader] recovery check failed: %v (still degraded)", err)
 	}
 }
 

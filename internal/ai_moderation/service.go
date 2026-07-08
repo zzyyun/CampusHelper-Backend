@@ -211,10 +211,8 @@ func (s *Service) ModerateBatch(ctx context.Context, req *ai_moderation_pb.Moder
 		}
 	}
 
-	// 记录批量 metrics
-	metrics.BatchLatencySeconds.WithLabelValues(
-		time.Duration(elapsed).String(),
-	).Observe(float64(elapsed) / 1000.0)
+	// 记录批量 metrics（无 label，避免 Prometheus 高基数）
+	metrics.BatchLatencySeconds.Observe(float64(elapsed) / 1000.0)
 
 	return &ai_moderation_pb.ModerateBatchResponse{
 		Results:       results,
