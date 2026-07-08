@@ -33,6 +33,7 @@ type Service struct {
 	ai_moderation_pb.UnimplementedAIModerationServiceServer
 
 	loader         ModelLoader
+	configMgr      *ConfigManager // 运行时配置管理器
 	modelLoadedAt  time.Time
 	modelLoadMode  string // "mock" 或 "onnxruntime"
 	intraOpThreads int
@@ -42,8 +43,9 @@ type Service struct {
 func NewService(loader ModelLoader) *Service {
 	return &Service{
 		loader:         loader,
+		configMgr:      NewConfigManager(loader, DefaultThresholdConfig()),
 		modelLoadedAt:  time.Now(),
-		modelLoadMode:  "mock", // 当前为 mock，task-046 接入 onnxruntime 后改为 "onnxruntime"
+		modelLoadMode:  "mock",
 		intraOpThreads: 0,
 	}
 }
@@ -52,6 +54,7 @@ func NewService(loader ModelLoader) *Service {
 func NewServiceWithMode(loader ModelLoader, mode string, intraOpThreads int) *Service {
 	return &Service{
 		loader:         loader,
+		configMgr:      NewConfigManager(loader, DefaultThresholdConfig()),
 		modelLoadedAt:  time.Now(),
 		modelLoadMode:  mode,
 		intraOpThreads: intraOpThreads,
