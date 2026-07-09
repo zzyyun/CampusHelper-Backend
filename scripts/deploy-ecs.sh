@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SERVICE_INPUT="${1:-all}"
-COMPOSE_FILE="/opt/campus/docker-compose.yaml"
+COMPOSE_FILE="/opt/campus/campus-docker-compose.yaml"
 ALL_SERVICES="gateway user content task message file"
 
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
