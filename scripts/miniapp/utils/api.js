@@ -118,8 +118,24 @@ function formatTime(unixSec){
   if(y===now.getFullYear())return m+'/'+dd;return y+'/'+m+'/'+dd
 }
 
+// 游客模式：检查是否已登录，未登录则弹窗引导并跳转登录页；已登录返回 true
+function requireLogin(){
+  const app=getApp()
+  if(app.globalData.isGuest||!wx.getStorageSync('accessToken')){
+    wx.showModal({
+      title:'提示',
+      content:'该功能需要登录后使用',
+      confirmText:'去登录',
+      cancelText:'取消',
+      success:r=>{if(r.confirm)wx.navigateTo({url:'/pages/login/login'})}
+    })
+    return false
+  }
+  return true
+}
+
 module.exports={
-  request,wxLogin,getMyInfo,bindCampus,updateUserInfo,listSchools,
+  request,wxLogin,getMyInfo,bindCampus,updateUserInfo,listSchools,requireLogin,
   listPosts,getPost,createPost,updatePost,deletePost,likePost,unlikePost,searchContent,
   listComments,listReplies,createComment,deleteComment,
   listTasks,getTask,createTask,updateTask,deleteTask,claimTask,completeTask,cancelTask,

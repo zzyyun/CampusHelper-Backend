@@ -5,7 +5,7 @@ Page({
     taskTypeText:TASK_TYPE_TEXT,taskStatusText:TASK_STATUS_TEXT,taskTypeTag:TASK_TYPE_TAG},
   onLoad(o){if(o.id){this.data.taskId=o.id;this.loadTask()}},
   loadTask(){api.getTask(this.data.taskId).then(d=>{this.setData({task:d});wx.setNavigationBarTitle({title:d.title||'任务详情'})}).catch(()=>wx.showToast({title:'加载失败',icon:'none'}))},
-  onClaim(){this.setData({showClaimForm:true})},
+  onClaim(){if(!api.requireLogin())return;this.setData({showClaimForm:true})},
   cancelClaim(){this.setData({showClaimForm:false})},
   onInput(e){const f=e.currentTarget.dataset.field;if(f)this.setData({[f]:e.detail.value})},
   onSubmitClaim(){if(!this.data.claimContact.trim())return wx.showToast({title:'请填写联系方式',icon:'none'})

@@ -8,6 +8,7 @@ Page({
       app.globalData.refreshToken=wx.getStorageSync('refreshToken')||''
       const bound=wx.getStorageSync('isBoundCampus')
       app.globalData.isBoundCampus=!!bound
+      app.globalData.isGuest=false
       if(bound){wx.switchTab({url:'/pages/home/home'})}
       else{wx.redirectTo({url:'/pages/school/bind'})}
     }
@@ -31,6 +32,7 @@ Page({
           app.globalData.refreshToken=data.refresh_token
           app.globalData.isBoundCampus=data.is_bound_campus
           app.globalData.schoolId=data.school_id
+          app.globalData.isGuest=false
           if(data.is_bound_campus){wx.switchTab({url:'/pages/home/home'})}
           else{wx.redirectTo({url:'/pages/school/bind'})}
         }).catch(e=>{
@@ -43,5 +45,9 @@ Page({
         console.error('wx.login error:',err)
       }
     })
+  },
+  onSkipLogin(){
+    getApp().globalData.isGuest=true
+    wx.switchTab({url:'/pages/home/home'})
   }
 })

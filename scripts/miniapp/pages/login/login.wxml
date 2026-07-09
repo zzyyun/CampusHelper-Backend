@@ -9,6 +9,9 @@
     <button class="login-btn" bindtap="onGetUserProfile" loading="{{loading}}" disabled="{{loading}}">
       <text class="btn-text">微信一键登录</text>
     </button>
+    <view class="skip-btn" bindtap="onSkipLogin">
+      <text class="skip-text">暂不登录，先逛一逛</text>
+    </view>
     <text class="login-error">{{errorMsg}}</text>
   </view>
 </view>
