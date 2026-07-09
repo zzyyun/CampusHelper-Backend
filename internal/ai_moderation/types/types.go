@@ -55,7 +55,7 @@ type ModelConfig struct {
 	ModelHash         string // 模型文件 SHA256（启动时校验）
 	Enabled           bool   // true=加载真实 ONNX 模型, false=mock 模式
 	IntraOpNumThreads int    // ONNX 内部线程数
-	EnableCpuMemArena bool   // ONNX CPU memory arena
+	EnableCPUMemArena bool   // ONNX CPU memory arena
 	TimeoutMs         int    // 单次推理超时
 }
 
