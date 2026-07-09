@@ -24,6 +24,7 @@ import (
 	content_db "go_projects/praProject1/cmd/content/database"
 	"go_projects/praProject1/cmd/content/model"
 	"go_projects/praProject1/pkg/aiclient"
+	"go_projects/praProject1/pkg/contextx"
 )
 
 // ─── 全局 AI 客户端（由 main.go InitAIClient 初始化）───────────────────────
@@ -199,7 +200,7 @@ func sha256Hex(text string) string {
 
 // extractTraceID 从 ctx 提取 trace_id（与 pkg/contextx 兼容）
 func extractTraceID(ctx context.Context) string {
-	if v := ctx.Value("trace_id"); v != nil {
+	if v := ctx.Value(contextx.TraceIDKey{}); v != nil {
 		if s, ok := v.(string); ok {
 			return s
 		}
