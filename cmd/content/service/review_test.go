@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	content_db "go_projects/praProject1/cmd/content/model"
@@ -65,7 +66,7 @@ func TestPublishEvent_NilPublisher(t *testing.T) {
 	defer func() { mqPublisher = oldPublisher }()
 
 	// publishEvent 在 mqPublisher 为 nil 时不应 panic
-	publishEvent(nil, mq.EventContentPublished, 1, 1, 1)
+	publishEvent(context.TODO(), mq.EventContentPublished, 1, 1, 1)
 }
 
 func TestInitMQ(t *testing.T) {
