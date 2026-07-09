@@ -74,8 +74,9 @@ type MatchResult struct {
 // Match 在文本中匹配所有敏感词，返回按起始位置排序的命中列表。
 //
 // 算法：
-//   对文本中每个 rune 位置作为起点，沿 Trie 向下遍历；
-//   每命中一个 IsEnd 节点即记录一条 MatchResult。
+//
+//	对文本中每个 rune 位置作为起点，沿 Trie 向下遍历；
+//	每命中一个 IsEnd 节点即记录一条 MatchResult。
 //
 // 时间复杂度 O(n * maxWordLen)，实际接近 O(n)（maxWordLen 是常量）。
 // 并发安全（读锁）。
@@ -110,8 +111,8 @@ func (d *DFAMatcher) Match(text string) []MatchResult {
 				results = append(results, MatchResult{
 					Word:   child.Word,
 					Start:  byteOffsets[i],
-					End:    byteOffsets[j+1],                        // 结束字节偏移（不含）
-					Length: byteOffsets[j+1] - byteOffsets[i],        // 字节长度（与 Start/End 一致）
+					End:    byteOffsets[j+1],                  // 结束字节偏移（不含）
+					Length: byteOffsets[j+1] - byteOffsets[i], // 字节长度（与 Start/End 一致）
 				})
 			}
 			node = child

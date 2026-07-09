@@ -12,13 +12,9 @@ import (
 	"go_projects/praProject1/cmd/task/repo"
 	"go_projects/praProject1/pkg/snowflake"
 
-	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
-
-const serviceName = "task-service"
 
 type TaskServiceServer struct {
 	task_pb.UnimplementedTaskServiceServer
@@ -237,7 +233,7 @@ func (s *TaskServiceServer) ClaimTask(ctx context.Context, req *task_pb.ClaimTas
 	// 返回发布者的联系方式给接单者
 	t, err := repo.GetByID(req.SchoolId, req.TaskId)
 	if err != nil {
-		return &common_pb.BaseResponse{Code: 0, Message: "接单成功"}, nil
+		return &common_pb.BaseResponse{Code: 0, Message: "接单成功"}, nil //nolint:nilerr // 接单已成功，获取联系方式失败不影响主流程
 	}
 
 	return &common_pb.BaseResponse{
@@ -364,50 +360,6 @@ func modelTaskType(t task_pb.TaskType) string {
 	default:
 		return "delivery"
 	}
-}
-
-// extractTraceFromMeta 提取 W3C TraceContext。
-func extractTraceFromMeta(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ctx
-	}
-	carrier := make(map[string]string)
-	for k, vals := range md {
-		if len(vals) > 0 {
-			carrier[k] = vals[0]
-		}
-	}
-	return otel.GetTextMapPropagator().Extract(ctx, propagationMapCarrier(carrier))
-}
-
-type propagationMapCarrier map[string]string
-
-func (c propagationMapCarrier) Get(key string) string  { return c[key] }
-func (c propagationMapCarrier) Set(key, value string)  { c[key] = value }
-func (c propagationMapCarrier) Keys() []string {
-	keys := make([]string, 0, len(c))
-	for k := range c {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-// userIDFromCtx reads user-id from gRPC metadata.
-func userIDFromCtx(ctx context.Context) int64 {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return 0
-	}
-	vals := md.Get("user-id")
-	if len(vals) == 0 {
-		return 0
-	}
-	id := int64(0)
-	if _, err := fmt.Sscanf(vals[0], "%d", &id); err != nil {
-		return 0
-	}
-	return id
 }
 
 // 确保接口兼容性

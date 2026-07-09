@@ -84,7 +84,8 @@ func RecordSuccess(service string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.state == circuitHalfOpen {
+	switch c.state {
+	case circuitHalfOpen:
 		c.successCount++
 		if c.successCount >= circuitSuccessThreshold {
 			c.state = circuitClosed
@@ -92,7 +93,7 @@ func RecordSuccess(service string) {
 			c.successCount = 0
 			log.Printf("[degradation] 服务 %s 熔断器恢复（半开态连续成功 %d 次）", service, circuitSuccessThreshold)
 		}
-	} else if c.state == circuitClosed {
+	case circuitClosed:
 		c.failureCount = 0 // 正常态下成功清零失败计数
 	}
 }

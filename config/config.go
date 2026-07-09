@@ -15,14 +15,14 @@ type ServiceConfig struct {
 	LoadBalance bool   `mapstructure:"loadBalance"` // 键名与字段名驼峰不一致，必须加 mapstructure
 }
 type MysqlConfig struct {
-	Username        string            `mapstructure:"username"`
-	Password        string            `mapstructure:"password"`
-	Host            string            `mapstructure:"host"`
-	Port            string            `mapstructure:"port"`
-	UserDatabase    string            `mapstructure:"userDatabase"`
-	ContentDatabase string            `mapstructure:"contentDatabase"`
-	Charset         string            `mapstructure:"charset"`
-	Driver          string            `mapstructure:"driver"`
+	Username        string `mapstructure:"username"`
+	Password        string `mapstructure:"password"`
+	Host            string `mapstructure:"host"`
+	Port            string `mapstructure:"port"`
+	UserDatabase    string `mapstructure:"userDatabase"`
+	ContentDatabase string `mapstructure:"contentDatabase"`
+	Charset         string `mapstructure:"charset"`
+	Driver          string `mapstructure:"driver"`
 	// Databases 通用多服务数据库映射，便于后续扩展（task/message/admin/file）
 	// key: 服务名（user/content/task/...），value: 数据库名
 	// 如果 map 为空，自动用 UserDatabase/ContentDatabase 等具体字段填充
@@ -80,6 +80,7 @@ func (m MysqlConfig) DBName(service string) string {
 	}
 	return ""
 }
+
 type RedisConfig struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
@@ -128,17 +129,17 @@ type FileConfig struct {
 	AllowedTypes []string    `mapstructure:"allowedTypes"`
 }
 type Config struct {
-	Service      map[string]ServiceConfig `mapstructure:"service"`
-	Mysql        MysqlConfig              `mapstructure:"mysql"`
-	Redis        RedisConfig              `mapstructure:"redis"`
-	Jwt          JwtConfig                `mapstructure:"jwt"`
-	RabbitMQ     RabbitMQConfig           `mapstructure:"rabbitmq"`
-	Etcd         EtcdConfig               `mapstructure:"etcd"`
-	Jaeger       JaegerConfig             `mapstructure:"jaeger"`
-	Wechat       WechatConfig             `mapstructure:"wechat"`
-	Gateway      GatewayConfig            `mapstructure:"gateway"`
+	Service       map[string]ServiceConfig `mapstructure:"service"`
+	Mysql         MysqlConfig              `mapstructure:"mysql"`
+	Redis         RedisConfig              `mapstructure:"redis"`
+	Jwt           JwtConfig                `mapstructure:"jwt"`
+	RabbitMQ      RabbitMQConfig           `mapstructure:"rabbitmq"`
+	Etcd          EtcdConfig               `mapstructure:"etcd"`
+	Jaeger        JaegerConfig             `mapstructure:"jaeger"`
+	Wechat        WechatConfig             `mapstructure:"wechat"`
+	Gateway       GatewayConfig            `mapstructure:"gateway"`
 	Elasticsearch ElasticsearchConfig      `mapstructure:"elasticsearch"`
-	File         FileConfig                `mapstructure:"file"`
+	File          FileConfig               `mapstructure:"file"`
 }
 
 func InitConfig(configPath string) {

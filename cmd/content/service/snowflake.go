@@ -28,8 +28,3 @@ func nextPostID() (int64, error) {
 func nextCommentID() (int64, error) {
 	return snowflakeGen.NextID()
 }
-
-// nextLikeID 生成下一个点赞 ID
-func nextLikeID() (int64, error) {
-	return snowflakeGen.NextID()
-}

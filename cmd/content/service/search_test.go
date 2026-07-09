@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
+	pb "go_projects/praProject1/PB/pb/content_pb"
 )
 
 // ─── buildSearchQuery 查询构造测试 ─────────────────────────────────────────────

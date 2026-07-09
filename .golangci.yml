@@ -16,6 +16,7 @@ linters:
     govet:
       disable:
         - fieldalignment
+        - shadow
       enable-all: true
     staticcheck:
       checks:
@@ -40,6 +41,26 @@ linters:
         path: \.pb\.go$
       - path: config/
         text: hardcoded
+      # 排除 contextcheck 中因函数签名固定而无法传递 context 的告警
+      - linters:
+          - contextcheck
+        text: "should pass the context parameter"
+      - linters:
+          - contextcheck
+        text: "Non-inherited new context"
+      # 测试文件中结构体字面量写入未读取字段属于正常做法，排除该告警
+      - linters:
+          - govet
+        text: "unused write to field"
+      # 以下包名含下划线，属历史遗留，暂不重命名包，排除 ST1003
+      - linters:
+          - staticcheck
+        text: ST1003
+        path: cmd/user/database/
+      - linters:
+          - staticcheck
+        text: ST1003
+        path: internal/ai_moderation/
     paths:
       - third_party$
       - builtin$

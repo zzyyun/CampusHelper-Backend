@@ -192,7 +192,6 @@ func UpdateUserInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
-
 // ─── GET /api/v1/schools ─────────────────────────────────────────────────────
 
 type listSchoolsReq struct {

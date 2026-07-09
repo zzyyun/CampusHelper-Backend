@@ -10,7 +10,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path"
-	"strings"
 	"time"
 
 	file_pb "go_projects/praProject1/PB/pb/file_pb"
@@ -23,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -66,7 +64,9 @@ func Upload(ctx context.Context, schoolID, uploaderID int64, category string, fi
 	// 2. MIME 校验（http.DetectContentType 读文件头）
 	head := make([]byte, 512)
 	n, _ := file.Read(head)
-	file.Seek(0, io.SeekStart)
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("重置文件读取位置失败: %w", err)
+	}
 	contentType := http.DetectContentType(head[:n])
 	if !isAllowedType(contentType, cfg.AllowedTypes) {
 		return nil, fmt.Errorf("不支持的文件类型: %s", contentType)
@@ -78,7 +78,10 @@ func Upload(ctx context.Context, schoolID, uploaderID int64, category string, fi
 		span.RecordError(err)
 		return nil, fmt.Errorf("计算 SHA-256 失败: %w", err)
 	}
-	file.Seek(0, io.SeekStart)
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("重置文件读取位置失败: %w", err)
+	}
 	sha256sum := hex.EncodeToString(hasher.Sum(nil))
 
 	// 4. 去重检查
@@ -135,10 +138,12 @@ func (s *FileServiceServer) Upload(ctx context.Context, req *file_pb.UploadReque
 		return nil, status.Error(codes.InvalidArgument, "文件内容为空")
 	}
 
+	// 自动检测 Content-Type（后续可透传给存储服务）
 	contentType := req.ContentType
 	if contentType == "" {
 		contentType = http.DetectContentType(req.Data)
 	}
+	_ = contentType
 
 	// 构造 multipart.File 接口（通过内存读取）
 	file := bytes.NewReader(req.Data)
@@ -262,34 +267,3 @@ func toPbFileInfo(f *model.File) *file_pb.FileInfo {
 		CreatedAt:   f.CreatedAt.Unix(),
 	}
 }
-
-// ─── Trace 透传 ─────────────────────────────────────────────────────────────
-
-func extractTraceFromMeta(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ctx
-	}
-	carrier := make(map[string]string)
-	for k, vals := range md {
-		if len(vals) > 0 {
-			carrier[k] = vals[0]
-		}
-	}
-	return otel.GetTextMapPropagator().Extract(ctx, propagationMapCarrier(carrier))
-}
-
-type propagationMapCarrier map[string]string
-
-func (c propagationMapCarrier) Get(key string) string  { return c[key] }
-func (c propagationMapCarrier) Set(key, value string)  { c[key] = value }
-func (c propagationMapCarrier) Keys() []string {
-	keys := make([]string, 0, len(c))
-	for k := range c {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-// unused but ensures import
-var _ = strings.TrimSpace

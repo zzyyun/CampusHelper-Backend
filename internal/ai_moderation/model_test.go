@@ -195,7 +195,7 @@ func TestService_ModerateBatch_Success(t *testing.T) {
 	}
 
 	resp, err := svc.ModerateBatch(context.Background(), &ai_moderation_pb.ModerateBatchRequest{
-		Items:         items,
+		Items:          items,
 		MaxConcurrency: 2,
 	})
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	ai_moderation_pb "go_projects/praProject1/PB/pb/ai_moderation_pb"
+	"go_projects/praProject1/pkg/contextx"
 )
 
 // ─── Circuit Breaker 测试 ───────────────────────────────────────────────────
@@ -164,8 +165,8 @@ func TestModerationClient_DefaultTimeout(t *testing.T) {
 // ─── Context trace_id 测试 ──────────────────────────────────────────────────
 
 func TestContextTraceID(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "trace_id", "trace-abc-123")
-	traceID, _ := ctx.Value("trace_id").(string)
+	ctx := context.WithValue(context.Background(), contextx.TraceIDKey{}, "trace-abc-123")
+	traceID, _ := ctx.Value(contextx.TraceIDKey{}).(string)
 	if traceID != "trace-abc-123" {
 		t.Errorf("trace_id extraction failed: %s", traceID)
 	}
@@ -173,7 +174,7 @@ func TestContextTraceID(t *testing.T) {
 
 func TestContextMissingTraceID(t *testing.T) {
 	ctx := context.Background()
-	traceID, _ := ctx.Value("trace_id").(string)
+	traceID, _ := ctx.Value(contextx.TraceIDKey{}).(string)
 	if traceID != "" {
 		t.Errorf("missing trace_id should be empty, got %s", traceID)
 	}

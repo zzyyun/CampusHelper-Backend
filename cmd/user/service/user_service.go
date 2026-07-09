@@ -160,7 +160,7 @@ func (s *UserServiceServer) WxLogin(ctx context.Context, req *user_pb.WxLoginReq
 func (s *UserServiceServer) RefreshToken(ctx context.Context, req *user_pb.RefreshTokenRequest) (*user_pb.RefreshTokenResponse, error) {
 	ctx = extractTraceFromMeta(ctx)
 	tracer := otel.Tracer(serviceName)
-	ctx, span := tracer.Start(ctx, "UserService.RefreshToken")
+	_, span := tracer.Start(ctx, "UserService.RefreshToken")
 	defer span.End()
 
 	rt := req.GetRefreshToken()
@@ -257,8 +257,8 @@ func (s *UserServiceServer) GetCurrentUser(ctx context.Context, req *user_pb.Get
 
 	targetID := userIDFromCtx(ctx)
 	// 请求显式传入 user_id 时覆盖（便于查询其他用户的基本资料）
-	if reqUserId := req.GetUserId(); reqUserId != 0 {
-		targetID = reqUserId
+	if reqUserID := req.GetUserId(); reqUserID != 0 {
+		targetID = reqUserID
 	}
 	span.SetAttributes(attribute.Int64("user.id", int64(targetID)))
 
@@ -366,7 +366,7 @@ func (s *UserServiceServer) UpdateUserInfo(ctx context.Context, req *user_pb.Upd
 func (s *UserServiceServer) ListSchools(ctx context.Context, req *user_pb.ListSchoolsRequest) (*user_pb.ListSchoolsResponse, error) {
 	ctx = extractTraceFromMeta(ctx)
 	tracer := otel.Tracer(serviceName)
-	ctx, span := tracer.Start(ctx, "UserService.ListSchools")
+	_, span := tracer.Start(ctx, "UserService.ListSchools")
 	defer span.End()
 
 	pageSize := int(req.GetPageSize())
@@ -399,8 +399,8 @@ func (s *UserServiceServer) ListSchools(ctx context.Context, req *user_pb.ListSc
 	}
 
 	return &user_pb.ListSchoolsResponse{
-		Schools:  pbSchools,
-		HasMore:  false,
+		Schools:    pbSchools,
+		HasMore:    false,
 		NextCursor: "",
 	}, nil
 }

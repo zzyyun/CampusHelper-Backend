@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	testSecret    = "test-secret-key"
-	testAccessH   = 1
-	testRefreshH  = 24
+	testSecret   = "test-secret-key"
+	testAccessH  = 1
+	testRefreshH = 24
 )
 
 // ─── Access Token ────────────────────────────────────────────────────────────

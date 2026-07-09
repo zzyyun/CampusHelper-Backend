@@ -23,10 +23,10 @@ func TestRole_String(t *testing.T) {
 
 func TestCan_Permissions(t *testing.T) {
 	tests := []struct {
-		name  string
-		role  Role
-		perm  Permission
-		want  bool
+		name string
+		role Role
+		perm Permission
+		want bool
 	}{
 		{"学生可发帖", RoleStudent, PermPostCreate, true},
 		{"学生可创建任务", RoleStudent, PermTaskCreate, true},

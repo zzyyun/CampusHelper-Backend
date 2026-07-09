@@ -28,4 +28,4 @@ github_actions
 github_actions.pub
 
 # 编译产物
-gateway
+/gateway

@@ -19,11 +19,8 @@ package ai_moderation
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -100,18 +97,4 @@ func NewModelLoader(cfg ModelConfig) (ModelLoader, error) {
 				"(see internal/ai_moderation/onnx_bridge.go)")
 	}
 	return onnxFactory(cfg)
-}
-
-// verifyModelHash 校验模型文件 SHA256。
-func verifyModelHash(path, expected string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read model file: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	actual := hex.EncodeToString(sum[:])
-	if actual != expected {
-		return fmt.Errorf("hash mismatch: expected=%s, actual=%s", expected, actual)
-	}
-	return nil
 }

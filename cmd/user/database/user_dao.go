@@ -151,4 +151,3 @@ func GetUserCountBySchool(schoolID int64) (int64, error) {
 	err := mustUserDB().Model(&model.User{}).Where("school_id = ?", schoolID).Count(&count).Error
 	return count, err
 }
-

@@ -9,10 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	content_db "go_projects/praProject1/cmd/content/model"
-	content_database "go_projects/praProject1/cmd/content/database"
-	content_service "go_projects/praProject1/cmd/content/service"
 	pb "go_projects/praProject1/PB/pb/content_pb"
+	content_database "go_projects/praProject1/cmd/content/database"
+	content_db "go_projects/praProject1/cmd/content/model"
+	content_service "go_projects/praProject1/cmd/content/service"
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"

@@ -10,11 +10,11 @@ import (
 type NotificationType string
 
 const (
-	NotifLiked        NotificationType = "liked"          // 点赞通知
-	NotifPublished    NotificationType = "published"      // 审核通过通知
-	NotifReviewResult NotificationType = "review_result"  // 审核拒绝通知
-	NotifTakenDown    NotificationType = "taken_down"     // 违规下架通知
-	NotifReplied      NotificationType = "replied"        // 评论回复通知
+	NotifLiked        NotificationType = "liked"         // 点赞通知
+	NotifPublished    NotificationType = "published"     // 审核通过通知
+	NotifReviewResult NotificationType = "review_result" // 审核拒绝通知
+	NotifTakenDown    NotificationType = "taken_down"    // 违规下架通知
+	NotifReplied      NotificationType = "replied"       // 评论回复通知
 )
 
 // Notification 站内通知数据模型。

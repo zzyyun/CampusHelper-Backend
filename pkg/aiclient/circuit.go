@@ -6,11 +6,12 @@
 //   - 半开状态放行 1 个请求试探，成功则关闭熔断
 //
 // 设计理由（PRD rev2 修正 #1）：
-//   熔断器必须在 Content Service 客户端侧，不能在 ai-moderation 服务端。
-//   因为：
-//     - 熔断保护的是"调用方不被慢/错的依赖拖垮"
-//     - ai-moderation 自身的健康由 health check + 模型加载校验保证
-//     - 多个 Content Service 副本各自维护熔断器，避免单点决策
+//
+//	熔断器必须在 Content Service 客户端侧，不能在 ai-moderation 服务端。
+//	因为：
+//	  - 熔断保护的是"调用方不被慢/错的依赖拖垮"
+//	  - ai-moderation 自身的健康由 health check + 模型加载校验保证
+//	  - 多个 Content Service 副本各自维护熔断器，避免单点决策
 package aiclient
 
 import (

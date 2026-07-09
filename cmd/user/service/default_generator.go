@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"time"
 )
 
 const (
@@ -18,10 +17,6 @@ var (
 	adjectives = []string{"快乐", "温馨", "活力", "阳光", "友好", "热情", "善良", "聪明", "勇敢", "创意"}
 	nouns      = []string{"小草", "微风", "星光", "晨露", "白云", "花朵", "小鸟", "彩虹", "流星", "森林"}
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 // GenerateDefaultNickname 生成默认昵称
 // 格式：校园用户 + 随机形容词 + 随机名词 + 随机4位数字

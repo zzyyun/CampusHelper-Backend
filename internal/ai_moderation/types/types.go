@@ -40,12 +40,12 @@ func (r Result) String() string {
 
 // InferenceResult 单次 AI 推理输出。
 type InferenceResult struct {
-	Result       Result    // pass/review/block
-	Confidence   float32   // 0.0 - 1.0
-	Categories   []string  // 命中类别（如 ["涉政", "广告引流"]）
-	LatencyMs    int64     // 推理耗时
-	ModelVersion string    // 模型版本
-	FallbackUsed bool      // 是否走降级（mock 模式恒为 true，真实模式下推理异常时为 true）
+	Result       Result   // pass/review/block
+	Confidence   float32  // 0.0 - 1.0
+	Categories   []string // 命中类别（如 ["涉政", "广告引流"]）
+	LatencyMs    int64    // 推理耗时
+	ModelVersion string   // 模型版本
+	FallbackUsed bool     // 是否走降级（mock 模式恒为 true，真实模式下推理异常时为 true）
 }
 
 // ModelConfig 模型加载配置。
@@ -55,7 +55,7 @@ type ModelConfig struct {
 	ModelHash         string // 模型文件 SHA256（启动时校验）
 	Enabled           bool   // true=加载真实 ONNX 模型, false=mock 模式
 	IntraOpNumThreads int    // ONNX 内部线程数
-	EnableCpuMemArena bool   // ONNX CPU memory arena
+	EnableCPUMemArena bool   // ONNX CPU memory arena
 	TimeoutMs         int    // 单次推理超时
 }
 

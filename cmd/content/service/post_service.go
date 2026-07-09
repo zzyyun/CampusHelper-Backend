@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	content_db "go_projects/praProject1/cmd/content/model"
-	content_database "go_projects/praProject1/cmd/content/database"
-	"go_projects/praProject1/cmd/content/repo"
-	pb "go_projects/praProject1/PB/pb/content_pb"
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
+	pb "go_projects/praProject1/PB/pb/content_pb"
+	content_database "go_projects/praProject1/cmd/content/database"
+	content_db "go_projects/praProject1/cmd/content/model"
+	"go_projects/praProject1/cmd/content/repo"
 	"go_projects/praProject1/pkg/contextx"
 	es_pkg "go_projects/praProject1/pkg/es"
 	"go_projects/praProject1/pkg/mq"
@@ -152,12 +152,12 @@ func (s *ContentServiceServer) CreatePost(ctx context.Context, req *pb.CreatePos
 	// 如需在响应中回带 trace_id，请在 gRPC 响应 Header 中由统一拦截器写入。
 
 	return &pb.CreatePostResponse{
-		PostId:        post.ID,
-		Status:        pb.PostStatus(post.Status),
-		CreatedAt:     post.CreatedAt.Unix(),
-		AiResult:      aiDecision.AIResult,
-		AiConfidence:  aiDecision.Confidence,
-		AiCategories:  aiDecision.Categories,
+		PostId:         post.ID,
+		Status:         pb.PostStatus(post.Status),
+		CreatedAt:      post.CreatedAt.Unix(),
+		AiResult:       aiDecision.AIResult,
+		AiConfidence:   aiDecision.Confidence,
+		AiCategories:   aiDecision.Categories,
 		AiFallbackUsed: aiDecision.FallbackUsed,
 	}, nil
 }
@@ -177,9 +177,9 @@ func (s *ContentServiceServer) GetPost(ctx context.Context, req *pb.GetPostReque
 	}
 
 	resp := &pb.GetPostResponse{
-		Post:     toPbPost(post),
-		IsOwner:  post.UserID == req.ViewerUserId,
-		IsLiked:  false,
+		Post:    toPbPost(post),
+		IsOwner: post.UserID == req.ViewerUserId,
+		IsLiked: false,
 	}
 
 	// 查询点赞状态
@@ -775,7 +775,8 @@ func (s *ContentServiceServer) TakedownPost(ctx context.Context, req *pb.Takedow
 	}
 	publishEventRaw(event)
 
-	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil}
+	return &pb.TakedownPostResponse{Success: true, NewStatus: pb.PostStatus_POST_STATUS_CLOSED}, nil
+}
 
 // MarkRetrieved 标记失物已认领（published → retrieved）。
 // 仅作者本人可操作，仅失物招领类型支持此状态。
@@ -1057,7 +1058,6 @@ var (
 	errInvalidArgument = errors.New("invalid argument")
 	errNotFound        = errors.New("not found")
 	errForbidden       = errors.New("permission denied")
-	errUnimplemented   = errors.New("unimplemented")
 )
 
 // SensitiveWordErrorType 敏感词错误类型（用于 errors.As 提取）

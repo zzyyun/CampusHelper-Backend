@@ -209,8 +209,8 @@ func extractTraceFromMeta(ctx context.Context) context.Context {
 
 type propagationMapCarrier map[string]string
 
-func (c propagationMapCarrier) Get(key string) string  { return c[key] }
-func (c propagationMapCarrier) Set(key, value string)  { c[key] = value }
+func (c propagationMapCarrier) Get(key string) string { return c[key] }
+func (c propagationMapCarrier) Set(key, value string) { c[key] = value }
 func (c propagationMapCarrier) Keys() []string {
 	keys := make([]string, 0, len(c))
 	for k := range c {

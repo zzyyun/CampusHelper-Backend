@@ -123,7 +123,7 @@ func NewRouter() *gin.Engine {
 		superAdminRole.POST("/set-role", handler.AdminSetUserRole)
 	}
 
-// Content Service – routes (Issue #22, #41, 游客模式)
+	// Content Service – routes (Issue #22, #41, 游客模式)
 	//   读路由（List/Get/Search/ListComments）：游客可浏览
 	//   写路由（Create/Update/Delete/Like/Comment）：JWT + RequireSchoolBound
 	contentRead := v1.Group("/content", middleware.OptionalJWTAuth())

@@ -246,10 +246,10 @@ func TestContentEvent_TakenDownFinalized(t *testing.T) {
 func TestAsyncReview_DecisionLogic(t *testing.T) {
 	// 验证 AI 结果到帖子状态的映射关系（PRD 规范）
 	tests := []struct {
-		name           string
-		aiResult       int32
-		expectAction   string // "takedown_pending" / "no_action"
-		expectStatus   model.PostStatus
+		name         string
+		aiResult     int32
+		expectAction string // "takedown_pending" / "no_action"
+		expectStatus model.PostStatus
 	}{
 		{
 			name:         "BLOCK → taken_down_pending（24h 宽限期）",

@@ -80,13 +80,13 @@ func main() {
 
 	// ── 初始化 AI 模型加载器（mock 或 onnxruntime）────────────────────────────
 	modelCfg := ai_moderation.ModelConfig{
-		ModelPath:          viper.GetString("aiModeration.modelPath"),
-		ModelVersion:       viper.GetString("aiModeration.modelVersion"),
-		ModelHash:          viper.GetString("aiModeration.modelHash"),
-		Enabled:            viper.GetBool("aiModeration.enabled"),
-		IntraOpNumThreads:  viper.GetInt("aiModeration.intraOpNumThreads"),
-		EnableCpuMemArena:  viper.GetBool("aiModeration.enableCpuMemArena"),
-		TimeoutMs:          viper.GetInt("aiModeration.timeoutMs"),
+		ModelPath:         viper.GetString("aiModeration.modelPath"),
+		ModelVersion:      viper.GetString("aiModeration.modelVersion"),
+		ModelHash:         viper.GetString("aiModeration.modelHash"),
+		Enabled:           viper.GetBool("aiModeration.enabled"),
+		IntraOpNumThreads: viper.GetInt("aiModeration.intraOpNumThreads"),
+		EnableCPUMemArena: viper.GetBool("aiModeration.enableCpuMemArena"),
+		TimeoutMs:         viper.GetInt("aiModeration.timeoutMs"),
 	}
 	loader, err := ai_moderation.NewModelLoader(modelCfg)
 	if err != nil {

@@ -30,11 +30,11 @@ import (
 
 // 模型输出类别名称（与 config.json id2label 一致）。
 var categoryNames = []string{
-	"toxic",        // 0
-	"severe_toxic", // 1
-	"obscene",      // 2
-	"threat",       // 3
-	"insult",       // 4
+	"toxic",         // 0
+	"severe_toxic",  // 1
+	"obscene",       // 2
+	"threat",        // 3
+	"insult",        // 4
 	"identity_hate", // 5
 }
 

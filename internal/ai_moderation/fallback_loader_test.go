@@ -19,14 +19,8 @@ func (m *mockFailLoader) Infer(_ context.Context, _ string) (*types.InferenceRes
 	return nil, m.err
 }
 
-func (m *mockFailLoader) Version() string          { return "fail-loader" }
-func (m *mockFailLoader) Close() error              { return nil }
-
-// mockSlowLoader 模拟慢速推理（可配置延迟）。
-type mockSlowLoader struct {
-	delay int // ms
-	*MockLoader
-}
+func (m *mockFailLoader) Version() string { return "fail-loader" }
+func (m *mockFailLoader) Close() error    { return nil }
 
 func TestFallbackLoader_PrimarySuccess(t *testing.T) {
 	primary := NewMockLoader("primary")
@@ -70,7 +64,7 @@ func TestFallbackLoader_DegradedUsesFallback(t *testing.T) {
 	fallback := NewMockLoader("fallback-v2")
 	config := FallbackConfig{
 		MaxConsecutiveErrors: 1,
-		AlertOnDegrade:        false,
+		AlertOnDegrade:       false,
 	}
 	loader := NewFallbackLoader(primary, fallback, config)
 
@@ -149,7 +143,7 @@ func TestFallbackLoader_ConcurrentDegrade(t *testing.T) {
 	fallback := NewMockLoader("fallback")
 	loader := NewFallbackLoader(primary, fallback, FallbackConfig{
 		MaxConsecutiveErrors: 1,
-		AlertOnDegrade:        false,
+		AlertOnDegrade:       false,
 	})
 
 	var wg sync.WaitGroup
@@ -272,7 +266,7 @@ func TestFallbackLoader_DegradedConcurrentInfer(t *testing.T) {
 	fallback := NewMockLoader("fallback-concurrent")
 	loader := NewFallbackLoader(primary, fallback, FallbackConfig{
 		MaxConsecutiveErrors: 1,
-		AlertOnDegrade:        false,
+		AlertOnDegrade:       false,
 	})
 
 	// 触发降级
