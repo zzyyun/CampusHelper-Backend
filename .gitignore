@@ -23,5 +23,6 @@ config/campus.pem
 .claude/worktrees/
 worktrees/
 
-# ONNX 模型文件（二进制大文件，不入仓）
-models/
+# SSH 密钥文件（部署用，不入仓）
+github_actions
+github_actions.pub
