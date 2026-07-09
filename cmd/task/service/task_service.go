@@ -12,9 +12,7 @@ import (
 	"go_projects/praProject1/cmd/task/repo"
 	"go_projects/praProject1/pkg/snowflake"
 
-	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 

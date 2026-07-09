@@ -65,7 +65,9 @@ func InitDB(service string) (*gorm.DB, error) {
 	sqlDB.SetConnMaxIdleTime(time.Duration(pool.ConnMaxIdleTime) * time.Second)
 
 	// 注册慢查询监控回调
-	registerSlowQueryLogger(db, service)
+	if err := registerSlowQueryLogger(db, service); err != nil {
+		return nil, fmt.Errorf("注册慢查询监控失败: %w", err)
+	}
 
 	log.Printf("[db] %s 连接池: MaxIdle=%d MaxOpen=%d Lifetime=%ds IdleTime=%ds",
 		service, pool.MaxIdleConns, pool.MaxOpenConns, pool.ConnMaxLifetime, pool.ConnMaxIdleTime)
@@ -75,7 +77,7 @@ func InitDB(service string) (*gorm.DB, error) {
 }
 
 // registerSlowQueryLogger 注册 GORM Before/After 回调对，记录执行时间超过阈值的慢 SQL
-func registerSlowQueryLogger(db *gorm.DB, service string) {
+func registerSlowQueryLogger(db *gorm.DB, service string) error {
 	// Before 回调：在查询前记录开始时间
 	beforeFn := func(db *gorm.DB) {
 		if db.Statement != nil {
@@ -98,17 +100,36 @@ func registerSlowQueryLogger(db *gorm.DB, service string) {
 		}
 	}
 
-	db.Callback().Query().Before("gorm:query").Register("slow_query:before_query", beforeFn)
-	db.Callback().Query().After("gorm:query").Register("slow_query:after_query", afterFn)
+	// 注册各操作类型的慢查询监控回调（GORM Register 返回 compile 错误，正常不应触发）
+	callbacks := []struct {
+		phase    string
+		action   string
+		callback func() *gorm.DB
+	}{
+		{"Before", "gorm:query", func() *gorm.DB { return db.Callback().Query().Before("gorm:query") }},
+		{"After", "gorm:query", func() *gorm.DB { return db.Callback().Query().After("gorm:query") }},
+		{"Before", "gorm:create", func() *gorm.DB { return db.Callback().Create().Before("gorm:create") }},
+		{"After", "gorm:create", func() *gorm.DB { return db.Callback().Create().After("gorm:create") }},
+		{"Before", "gorm:update", func() *gorm.DB { return db.Callback().Update().Before("gorm:update") }},
+		{"After", "gorm:update", func() *gorm.DB { return db.Callback().Update().After("gorm:update") }},
+		{"Before", "gorm:delete", func() *gorm.DB { return db.Callback().Delete().Before("gorm:delete") }},
+		{"After", "gorm:delete", func() *gorm.DB { return db.Callback().Delete().After("gorm:delete") }},
+	}
 
-	db.Callback().Create().Before("gorm:create").Register("slow_query:before_create", beforeFn)
-	db.Callback().Create().After("gorm:create").Register("slow_query:after_create", afterFn)
+	fnMap := map[string]func(*gorm.DB){
+		"Before": beforeFn,
+		"After":  afterFn,
+	}
 
-	db.Callback().Update().Before("gorm:update").Register("slow_query:before_update", beforeFn)
-	db.Callback().Update().After("gorm:update").Register("slow_query:after_update", afterFn)
+	for _, c := range callbacks {
+		phase := c.phase
+		name := fmt.Sprintf("slow_query:%s_%s", phase, c.action)
+		if err := c.callback().Register(name, fnMap[phase]); err != nil {
+			return fmt.Errorf("注册回调 %s 失败: %w", name, err)
+		}
+	}
 
-	db.Callback().Delete().Before("gorm:delete").Register("slow_query:before_delete", beforeFn)
-	db.Callback().Delete().After("gorm:delete").Register("slow_query:after_delete", afterFn)
+	return nil
 }
 
 // startTimeKey 用于在 context 中存储查询开始时间
