@@ -98,10 +98,10 @@ func ListTasks(c *gin.Context) {
 	}
 
 	resp, err := client.TaskClient.ListTasks(ctx, &task_pb.ListTasksRequest{
-		SchoolId:  sid,
-		Cursor:    req.Cursor,
-		PageSize:  pageSize,
-		TaskType:  task_pb.TaskType(req.TaskType),
+		SchoolId: sid,
+		Cursor:   req.Cursor,
+		PageSize: pageSize,
+		TaskType: task_pb.TaskType(req.TaskType),
 	})
 	if err != nil {
 		middleware.GRPCErrorResponse(c, err)

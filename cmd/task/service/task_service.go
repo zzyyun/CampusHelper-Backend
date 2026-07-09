@@ -233,7 +233,7 @@ func (s *TaskServiceServer) ClaimTask(ctx context.Context, req *task_pb.ClaimTas
 	// 返回发布者的联系方式给接单者
 	t, err := repo.GetByID(req.SchoolId, req.TaskId)
 	if err != nil {
-		return &common_pb.BaseResponse{Code: 0, Message: "接单成功"}, nil
+		return &common_pb.BaseResponse{Code: 0, Message: "接单成功"}, nil //nolint:nilerr // 接单已成功，获取联系方式失败不影响主流程
 	}
 
 	return &common_pb.BaseResponse{

@@ -57,10 +57,10 @@ func TestDashboardStats_ZeroTotal(t *testing.T) {
 func TestDashboardStats_PRDTargets(t *testing.T) {
 	// PRD 成功指标验证逻辑
 	tests := []struct {
-		name    string
-		passR   float64 // 通过率
-		blockR  float64 // 拦截率
-		wantOk  bool
+		name   string
+		passR  float64 // 通过率
+		blockR float64 // 拦截率
+		wantOk bool
 	}{
 		{"达标: 60%+20%", 60.0, 20.0, true},   // pass>=60% + block>=20% → 自动裁决率>=80%
 		{"边界: 55%+25%", 55.0, 25.0, true},   // 80% 自动裁决
@@ -84,11 +84,11 @@ func TestGetDailyTrend_DaysLimits(t *testing.T) {
 		input int
 		want  int
 	}{
-		{0, 7},    // 默认 7 天
-		{-1, 7},   // 负数 → 7 天
-		{5, 5},    // 正常
-		{30, 30},  // 最大
-		{60, 30},  // 超过 30 → 截断到 30
+		{0, 7},   // 默认 7 天
+		{-1, 7},  // 负数 → 7 天
+		{5, 5},   // 正常
+		{30, 30}, // 最大
+		{60, 30}, // 超过 30 → 截断到 30
 	}
 
 	for _, tt := range tests {

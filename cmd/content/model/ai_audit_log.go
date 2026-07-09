@@ -66,18 +66,18 @@ func (s AIStatus) String() string {
 //   - idx_created_at: 按时间清理（180 天保留）
 //   - idx_ai_status: 按状态统计（降级率、异步命中率）
 type AIAuditLog struct {
-	ID            int64     `gorm:"primaryKey;autoIncrement:false" json:"id"` // 雪花算法生成
-	PostID        int64     `gorm:"column:post_id;index;not null"   json:"post_id"`
-	ContentHash   string    `gorm:"size:64;not null;index"           json:"content_hash"` // SHA256(text)
-	AIStatus      AIStatus  `gorm:"column:ai_status;not null;index"  json:"ai_status"`
-	AIResult      AIResult  `gorm:"column:ai_result;not null"        json:"ai_result"`
-	AIConfidence  float32   `gorm:"column:ai_confidence;not null"    json:"ai_confidence"`
-	AICategories  string    `gorm:"column:ai_categories;type:text"   json:"ai_categories"` // JSON 数组
-	LatencyMs     int64     `gorm:"column:latency_ms;not null"       json:"latency_ms"`
-	ModelVersion  string    `gorm:"size:32;not null"                 json:"model_version"`
-	FallbackUsed  bool      `gorm:"column:fallback_used;not null;default:false" json:"fallback_used"`
-	TraceID       string    `gorm:"size:64"                          json:"trace_id"`
-	CreatedAt     time.Time `gorm:"index"                            json:"created_at"`
+	ID           int64     `gorm:"primaryKey;autoIncrement:false" json:"id"` // 雪花算法生成
+	PostID       int64     `gorm:"column:post_id;index;not null"   json:"post_id"`
+	ContentHash  string    `gorm:"size:64;not null;index"           json:"content_hash"` // SHA256(text)
+	AIStatus     AIStatus  `gorm:"column:ai_status;not null;index"  json:"ai_status"`
+	AIResult     AIResult  `gorm:"column:ai_result;not null"        json:"ai_result"`
+	AIConfidence float32   `gorm:"column:ai_confidence;not null"    json:"ai_confidence"`
+	AICategories string    `gorm:"column:ai_categories;type:text"   json:"ai_categories"` // JSON 数组
+	LatencyMs    int64     `gorm:"column:latency_ms;not null"       json:"latency_ms"`
+	ModelVersion string    `gorm:"size:32;not null"                 json:"model_version"`
+	FallbackUsed bool      `gorm:"column:fallback_used;not null;default:false" json:"fallback_used"`
+	TraceID      string    `gorm:"size:64"                          json:"trace_id"`
+	CreatedAt    time.Time `gorm:"index"                            json:"created_at"`
 }
 
 // TableName 指定数据库表名

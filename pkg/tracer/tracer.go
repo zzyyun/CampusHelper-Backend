@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go_projects/praProject1/config"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"

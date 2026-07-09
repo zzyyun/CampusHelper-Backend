@@ -1,12 +1,12 @@
 // Package service - async_ai_review.go 提供 AI 异步补判 Consumer + 定时调度器。
 //
 // 流程（PRD rev2 § Feature 3）：
-//   1. 帖子 published 后实时入队 ai.moderation.async_review
-//   2. AsyncAIReviewConsumer 订阅该队列，5-10 goroutine 并发消费
-//   3. 对已 published 帖子重新调用 AI
-//      - BLOCK → status=taken_down_pending（24h 宽限期）+ MQ content.taken_down_pending
-//      - PASS/REVIEW → 不动状态（保守）
-//   4. AsyncReviewScheduler 每日 02:00 兜底扫描（防实时入队遗漏）
+//  1. 帖子 published 后实时入队 ai.moderation.async_review
+//  2. AsyncAIReviewConsumer 订阅该队列，5-10 goroutine 并发消费
+//  3. 对已 published 帖子重新调用 AI
+//     - BLOCK → status=taken_down_pending（24h 宽限期）+ MQ content.taken_down_pending
+//     - PASS/REVIEW → 不动状态（保守）
+//  4. AsyncReviewScheduler 每日 02:00 兜底扫描（防实时入队遗漏）
 //
 // 关联：
 //   - PRD docs/ai-moderation-content-service-v3.0-prd.md
@@ -36,8 +36,8 @@ var (
 
 // AIAsyncReviewEvent 异步补判事件（队列消息体）
 type AIAsyncReviewEvent struct {
-	Type     string `json:"type"`     // "ai.async.review"
-	PostID   int64  `json:"post_id"`  // 待复审帖子 ID
+	Type     string `json:"type"`    // "ai.async.review"
+	PostID   int64  `json:"post_id"` // 待复审帖子 ID
 	SchoolID int64  `json:"school_id"`
 	TraceID  string `json:"trace_id"` // 关联 Jaeger
 }
@@ -199,9 +199,9 @@ func publishTakenDownPending(ctx context.Context, postID, schoolID, userID int64
 		SchoolID: schoolID,
 		UserID:   userID,
 		Data: map[string]string{
-			"categories":          joinStrings(categories, ","),
-			"grace_period_hours":  "24",
-			"deadline":            time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+			"categories":         joinStrings(categories, ","),
+			"grace_period_hours": "24",
+			"deadline":           time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 		},
 	}
 	if err := notificationPublisher.Publish(ctx, event); err != nil {

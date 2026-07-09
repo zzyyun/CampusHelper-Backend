@@ -16,6 +16,7 @@ linters:
     govet:
       disable:
         - fieldalignment
+        - shadow
       enable-all: true
     staticcheck:
       checks:

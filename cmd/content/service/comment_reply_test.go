@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	content_db "go_projects/praProject1/cmd/content/model"
 	pb "go_projects/praProject1/PB/pb/content_pb"
+	content_db "go_projects/praProject1/cmd/content/model"
 )
 
 // ─── 二级回复参数校验测试（无 DB） ─────────────────────────────────────────────

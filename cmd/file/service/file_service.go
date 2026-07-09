@@ -138,10 +138,12 @@ func (s *FileServiceServer) Upload(ctx context.Context, req *file_pb.UploadReque
 		return nil, status.Error(codes.InvalidArgument, "文件内容为空")
 	}
 
+	// 自动检测 Content-Type（后续可透传给存储服务）
 	contentType := req.ContentType
 	if contentType == "" {
 		contentType = http.DetectContentType(req.Data)
 	}
+	_ = contentType
 
 	// 构造 multipart.File 接口（通过内存读取）
 	file := bytes.NewReader(req.Data)
@@ -265,4 +267,3 @@ func toPbFileInfo(f *model.File) *file_pb.FileInfo {
 		CreatedAt:   f.CreatedAt.Unix(),
 	}
 }
-

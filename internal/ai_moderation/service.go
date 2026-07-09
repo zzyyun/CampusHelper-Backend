@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"go_projects/praProject1/cmd/ai-moderation/metrics"
 	ai_moderation_pb "go_projects/praProject1/PB/pb/ai_moderation_pb"
+	"go_projects/praProject1/cmd/ai-moderation/metrics"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc/codes"
@@ -125,12 +125,12 @@ func (s *Service) HealthCheck(ctx context.Context, _ *empty.Empty) (*ai_moderati
 	}
 
 	return &ai_moderation_pb.HealthCheckResponse{
-		Status:            status,
-		ModelLoaded:       modelLoaded,
-		ModelVersion:      s.loader.Version(),
+		Status:             status,
+		ModelLoaded:        modelLoaded,
+		ModelVersion:       s.loader.Version(),
 		ModelLoadTimestamp: s.modelLoadedAt.Unix(),
-		Mode:              s.modelLoadMode,
-		IntraOpThreads:    int32(s.intraOpThreads),
+		Mode:               s.modelLoadMode,
+		IntraOpThreads:     int32(s.intraOpThreads),
 	}, nil
 }
 
@@ -215,11 +215,11 @@ func (s *Service) ModerateBatch(ctx context.Context, req *ai_moderation_pb.Moder
 	metrics.BatchLatencySeconds.Observe(float64(elapsed) / 1000.0)
 
 	return &ai_moderation_pb.ModerateBatchResponse{
-		Results:       results,
-		TotalCount:    int32(itemCount),
-		PassCount:     passCount,
-		ReviewCount:   reviewCount,
-		BlockCount:    blockCount,
+		Results:        results,
+		TotalCount:     int32(itemCount),
+		PassCount:      passCount,
+		ReviewCount:    reviewCount,
+		BlockCount:     blockCount,
 		TotalLatencyMs: elapsed,
 	}, nil
 }

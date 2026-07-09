@@ -6,9 +6,9 @@
 //   - 线程安全（atomic 切换 + sync.Once 初始化）
 //
 // 降级触发场景：
-//   1. ONNX 模型文件不存在/损坏 → 启动时降级
-//   2. 推理超时（>800ms）→ 运行时降级
-//   3. ONNX session 内部错误 → 运行时降级
+//  1. ONNX 模型文件不存在/损坏 → 启动时降级
+//  2. 推理超时（>800ms）→ 运行时降级
+//  3. ONNX session 内部错误 → 运行时降级
 //
 // 关联：
 //   - PRD docs/ai-moderation-content-service-v3.0-prd.md
@@ -32,19 +32,19 @@ import (
 //	loader, err := NewFallbackLoader(onnxLoader, mockLoader, FallbackConfig{...})
 //	result, err := loader.Infer(ctx, text)  // 自动降级
 type FallbackLoader struct {
-	primary   types.ModelLoader // ONNX loader（优先使用）
-	fallback  types.ModelLoader // Mock loader（降级兜底）
-	config    FallbackConfig
+	primary  types.ModelLoader // ONNX loader（优先使用）
+	fallback types.ModelLoader // Mock loader（降级兜底）
+	config   FallbackConfig
 
 	// 降级状态（0=正常使用 primary，1=已降级使用 fallback）
-	degraded   int32
+	degraded    int32
 	degradeOnce sync.Once
-	stopCh     chan struct{} // 关闭时通知 recoveryCheck goroutine 退出
+	stopCh      chan struct{} // 关闭时通知 recoveryCheck goroutine 退出
 }
 
 // FallbackConfig 降级策略配置。
 type FallbackConfig struct {
-	MaxConsecutiveErrors int           // 连续错误数触发降级（默认 3）
+	MaxConsecutiveErrors  int           // 连续错误数触发降级（默认 3）
 	RecoveryCheckInterval time.Duration // 降级后定期尝试恢复的间隔（默认 5 分钟）
 	AlertOnDegrade        bool          // 降级时是否告警（日志 + metrics）
 }
@@ -52,7 +52,7 @@ type FallbackConfig struct {
 // DefaultFallbackConfig 默认降级配置。
 func DefaultFallbackConfig() FallbackConfig {
 	return FallbackConfig{
-		MaxConsecutiveErrors: 3,
+		MaxConsecutiveErrors:  3,
 		RecoveryCheckInterval: 5 * time.Minute,
 		AlertOnDegrade:        true,
 	}

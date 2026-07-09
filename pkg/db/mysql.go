@@ -109,14 +109,30 @@ func registerSlowQueryLogger(db *gorm.DB, service string) error {
 		name string      // 回调名（必须唯一）
 		fn   func(*gorm.DB)
 	}{
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Query().Before("gorm:query").Register(n, fn) }, "slow_query:before_query", beforeFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Query().After("gorm:query").Register(n, fn) }, "slow_query:after_query", afterFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Create().Before("gorm:create").Register(n, fn) }, "slow_query:before_create", beforeFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Create().After("gorm:create").Register(n, fn) }, "slow_query:after_create", afterFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Update().Before("gorm:update").Register(n, fn) }, "slow_query:before_update", beforeFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Update().After("gorm:update").Register(n, fn) }, "slow_query:after_update", afterFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Delete().Before("gorm:delete").Register(n, fn) }, "slow_query:before_delete", beforeFn},
-		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Delete().After("gorm:delete").Register(n, fn) }, "slow_query:after_delete", afterFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Query().Before("gorm:query").Register(n, fn)
+		}, "slow_query:before_query", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Query().After("gorm:query").Register(n, fn)
+		}, "slow_query:after_query", afterFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Create().Before("gorm:create").Register(n, fn)
+		}, "slow_query:before_create", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Create().After("gorm:create").Register(n, fn)
+		}, "slow_query:after_create", afterFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Update().Before("gorm:update").Register(n, fn)
+		}, "slow_query:before_update", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Update().After("gorm:update").Register(n, fn)
+		}, "slow_query:after_update", afterFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Delete().Before("gorm:delete").Register(n, fn)
+		}, "slow_query:before_delete", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error {
+			return db.Callback().Delete().After("gorm:delete").Register(n, fn)
+		}, "slow_query:after_delete", afterFn},
 	}
 
 	for _, r := range registrations {

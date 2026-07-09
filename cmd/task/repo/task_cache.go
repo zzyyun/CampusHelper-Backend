@@ -13,7 +13,7 @@ import (
 // 任务缓存 TTL 配置
 var taskTTL = cache.NewTTL(
 	10*time.Minute, // 任务详情缓存 10 分钟
-	30*time.Second,  // 空值哨兵 30 秒
+	30*time.Second, // 空值哨兵 30 秒
 )
 
 // taskCacheClient 是任务缓存的全局客户端，由 InitTaskCache 初始化

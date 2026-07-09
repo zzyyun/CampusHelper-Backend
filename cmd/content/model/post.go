@@ -11,14 +11,14 @@ import (
 type PostStatus int8
 
 const (
-	PostStatusUnspecified PostStatus = 0
-	PostStatusPending     PostStatus = 1 // 审核中
-	PostStatusPublished   PostStatus = 2 // 已发布
-	PostStatusExpired     PostStatus = 3 // 已过期
-	PostStatusClosed      PostStatus = 4 // 已关闭
-	PostStatusRejected    PostStatus = 5 // 已拒绝
-	PostStatusRetrieved   PostStatus = 6 // 失物已认领（失物招领专用）
-	PostStatusSold        PostStatus = 7 // 二手已售出（二手交易专用）
+	PostStatusUnspecified      PostStatus = 0
+	PostStatusPending          PostStatus = 1 // 审核中
+	PostStatusPublished        PostStatus = 2 // 已发布
+	PostStatusExpired          PostStatus = 3 // 已过期
+	PostStatusClosed           PostStatus = 4 // 已关闭
+	PostStatusRejected         PostStatus = 5 // 已拒绝
+	PostStatusRetrieved        PostStatus = 6 // 失物已认领（失物招领专用）
+	PostStatusSold             PostStatus = 7 // 二手已售出（二手交易专用）
 	PostStatusTakenDownPending PostStatus = 8 // 异步补判违规，宽限期内（v3.0 AI 审核新增）
 )
 
@@ -68,34 +68,34 @@ var ErrInvalidTransition = errors.New("post: 非法的状态转移")
 // 严格遵循 docs/content-service-prd.md §3.1
 type Post struct {
 	// ID 由雪花算法生成（pkg/snowflake），关闭数据库自增以避免应用层赋值被覆盖
-	ID          int64          `gorm:"primaryKey;autoIncrement:false"        json:"id"`
-	SchoolID    int64          `gorm:"column:school_id;not null;index"      json:"school_id"` // 多租户隔离键
-	UserID      int64          `gorm:"column:user_id;not null;index"        json:"user_id"`   // 发帖人
-	Type        int8           `gorm:"not null;default:1"                   json:"type"`      // 1=通用 2=失物招领 3=二手
-	Title       string         `gorm:"size:200;not null"                    json:"title"`
-	Content     string         `gorm:"type:text;not null"                   json:"content"`
-	ImagesJSON  string         `gorm:"column:images;type:json"              json:"images_json"` // 图片 URL 数组，JSON 存储
-	Status      PostStatus     `gorm:"not null;default:1;index"             json:"status"`
-	LikesCount   int32          `gorm:"column:likes_count;not null;default:0" json:"likes_count"`
-	CommentCount int32          `gorm:"column:comment_count;not null;default:0" json:"comment_count"`
-	ExpiredAt   *time.Time     `gorm:"column:expired_at"                    json:"expired_at,omitempty"`
+	ID           int64      `gorm:"primaryKey;autoIncrement:false"        json:"id"`
+	SchoolID     int64      `gorm:"column:school_id;not null;index"      json:"school_id"` // 多租户隔离键
+	UserID       int64      `gorm:"column:user_id;not null;index"        json:"user_id"`   // 发帖人
+	Type         int8       `gorm:"not null;default:1"                   json:"type"`      // 1=通用 2=失物招领 3=二手
+	Title        string     `gorm:"size:200;not null"                    json:"title"`
+	Content      string     `gorm:"type:text;not null"                   json:"content"`
+	ImagesJSON   string     `gorm:"column:images;type:json"              json:"images_json"` // 图片 URL 数组，JSON 存储
+	Status       PostStatus `gorm:"not null;default:1;index"             json:"status"`
+	LikesCount   int32      `gorm:"column:likes_count;not null;default:0" json:"likes_count"`
+	CommentCount int32      `gorm:"column:comment_count;not null;default:0" json:"comment_count"`
+	ExpiredAt    *time.Time `gorm:"column:expired_at"                    json:"expired_at,omitempty"`
 
 	// ─── 业务扩展字段（按 type 取对应字段） ───────────────────────────────────
 	// 失物招领
-	LFType        int8    `gorm:"column:lf_type;default:0"       json:"lf_type"`        // 1=lost 2=found
-	LFLocation    string  `gorm:"column:lf_location;size:200"    json:"lf_location"`    // 丢失/拾取地点
-	LFContact     string  `gorm:"column:lf_contact;size:128"     json:"lf_contact"`     // 联系方式（私密，不索引）
-	LFCategory    int8    `gorm:"column:lf_category;default:0"   json:"lf_category"`    // 物品分类
+	LFType     int8   `gorm:"column:lf_type;default:0"       json:"lf_type"`     // 1=lost 2=found
+	LFLocation string `gorm:"column:lf_location;size:200"    json:"lf_location"` // 丢失/拾取地点
+	LFContact  string `gorm:"column:lf_contact;size:128"     json:"lf_contact"`  // 联系方式（私密，不索引）
+	LFCategory int8   `gorm:"column:lf_category;default:0"   json:"lf_category"` // 物品分类
 	// 二手交易
-	SHPrice       float64 `gorm:"column:sh_price;default:0"      json:"sh_price"`        // 期望售价（元）
+	SHPrice       float64 `gorm:"column:sh_price;default:0"      json:"sh_price"`              // 期望售价（元）
 	SHOriginal    float64 `gorm:"column:sh_original_price;default:0" json:"sh_original_price"` // 原价
-	SHCondition   int8    `gorm:"column:sh_condition;default:0"  json:"sh_condition"`    // 成色 1-4
-	SHTradeMethod int8    `gorm:"column:sh_trade_method;default:0" json:"sh_trade_method"` // 交易方式 1=面交 2=快递
+	SHCondition   int8    `gorm:"column:sh_condition;default:0"  json:"sh_condition"`          // 成色 1-4
+	SHTradeMethod int8    `gorm:"column:sh_trade_method;default:0" json:"sh_trade_method"`     // 交易方式 1=面交 2=快递
 	SHCategory    int8    `gorm:"column:sh_category;default:0"   json:"sh_category"`
 
 	// ─── 审核相关字段 ───────────────────────────────────────────────────────────
-	RejectReason string     `gorm:"column:reject_reason;size:500"     json:"reject_reason"`  // 审核拒绝/下架原因
-	ReviewerID   int64      `gorm:"column:reviewer_id;default:0"      json:"reviewer_id"`    // 审核员 ID
+	RejectReason string     `gorm:"column:reject_reason;size:500"     json:"reject_reason"`         // 审核拒绝/下架原因
+	ReviewerID   int64      `gorm:"column:reviewer_id;default:0"      json:"reviewer_id"`           // 审核员 ID
 	ReviewedAt   *time.Time `gorm:"column:reviewed_at"                json:"reviewed_at,omitempty"` // 审核时间
 
 	CreatedAt time.Time      `json:"created_at"`

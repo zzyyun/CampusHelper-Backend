@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"go_projects/praProject1/cmd/user/model"
 	"go_projects/praProject1/pkg/rdb"
 )
@@ -31,7 +33,10 @@ func SetUserCache(ctx context.Context, u *model.User) error {
 func GetUserCache(ctx context.Context, id int64) (*model.User, error) {
 	val, err := rdb.RDB.Get(ctx, userKey(id)).Bytes()
 	if err != nil {
-		return nil, nil // cache miss is not an error
+		if err == redis.Nil {
+			return nil, nil // 缓存未命中，非错误
+		}
+		return nil, err
 	}
 	var u model.User
 	if err = json.Unmarshal(val, &u); err != nil {
@@ -58,7 +63,10 @@ func SetSchoolCache(ctx context.Context, s *model.School) error {
 func GetSchoolCache(ctx context.Context, id int64) (*model.School, error) {
 	val, err := rdb.RDB.Get(ctx, schoolKey(id)).Bytes()
 	if err != nil {
-		return nil, nil
+		if err == redis.Nil {
+			return nil, nil // 缓存未命中，非错误
+		}
+		return nil, err
 	}
 	var s model.School
 	if err = json.Unmarshal(val, &s); err != nil {

@@ -28,10 +28,10 @@ func NewAuditStatsService() *AuditStatsService {
 // DashboardStats Dashboard 概览数据
 type DashboardStats struct {
 	// 总量
-	TotalCalls   int64   `json:"total_calls"`   // 总审核调用数
-	TotalPass    int64   `json:"total_pass"`    // PASS 数量
-	TotalReview  int64   `json:"total_review"`  // REVIEW 数量（进人工池）
-	TotalBlock   int64   `json:"total_block"`   // BLOCK 数量（自动拦截）
+	TotalCalls  int64 `json:"total_calls"`  // 总审核调用数
+	TotalPass   int64 `json:"total_pass"`   // PASS 数量
+	TotalReview int64 `json:"total_review"` // REVIEW 数量（进人工池）
+	TotalBlock  int64 `json:"total_block"`  // BLOCK 数量（自动拦截）
 
 	// 比率（百分比，保留 2 位小数）
 	PassRate   float64 `json:"pass_rate"`   // AI 自动放行率
@@ -54,11 +54,11 @@ type StatusDistribution struct {
 
 // DailyTrend 每日趋势数据点
 type DailyTrend struct {
-	Date       string `json:"date"`        // 日期 (YYYY-MM-DD)
-	TotalCalls int64  `json:"total_calls"` // 当日总调用
-	PassCount  int64  `json:"pass_count"`  // 当日 PASS
-	BlockCount int64  `json:"block_count"` // 当日 BLOCK
-	ReviewCount int64 `json:"review_count"` // 当日 REVIEW
+	Date        string `json:"date"`         // 日期 (YYYY-MM-DD)
+	TotalCalls  int64  `json:"total_calls"`  // 当日总调用
+	PassCount   int64  `json:"pass_count"`   // 当日 PASS
+	BlockCount  int64  `json:"block_count"`  // 当日 BLOCK
+	ReviewCount int64  `json:"review_count"` // 当日 REVIEW
 }
 
 // CategoryDistribution 违规类别分布

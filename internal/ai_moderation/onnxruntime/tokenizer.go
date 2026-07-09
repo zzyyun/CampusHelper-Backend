@@ -18,12 +18,12 @@ import (
 
 // BertTokenizer 基于 vocab.txt 的 BERT tokenizer。
 type BertTokenizer struct {
-	vocab    map[string]int64 // token → id
-	maxLen   int
-	unkID    int64
-	clsID    int64
-	sepID    int64
-	padID    int64
+	vocab  map[string]int64 // token → id
+	maxLen int
+	unkID  int64
+	clsID  int64
+	sepID  int64
+	padID  int64
 }
 
 // NewBertTokenizerFromFile 从 vocab.txt 创建 tokenizer。

@@ -75,11 +75,11 @@ func (f *TakenDownFinalizer) run(ctx context.Context) {
 // scanAndFinalize 扫描 taken_down_pending 帖子并执行最终下架
 //
 // 流程：
-//   1. 查询所有 status=taken_down_pending 且 taken_down_at < now-24h 的帖子
-//   2. 检查是否有申诉记录（本期由客服兜底，查询 audit_logs 标记）
-//   3. 无申诉 → UpdateStatus(taken_down_pending → closed)
-//   4. 发布 content.taken_down MQ 事件
-//   5. 记录 ai_audit_logs (status=closed-by-grace)
+//  1. 查询所有 status=taken_down_pending 且 taken_down_at < now-24h 的帖子
+//  2. 检查是否有申诉记录（本期由客服兜底，查询 audit_logs 标记）
+//  3. 无申诉 → UpdateStatus(taken_down_pending → closed)
+//  4. 发布 content.taken_down MQ 事件
+//  5. 记录 ai_audit_logs (status=closed-by-grace)
 func (f *TakenDownFinalizer) scanAndFinalize(ctx context.Context) {
 	log.Printf("[TakenDownFinalizer] Scan started at %s", time.Now().Format(time.RFC3339))
 
@@ -138,7 +138,7 @@ func (f *TakenDownFinalizer) publishTakenDown(ctx context.Context, post PostInfo
 		SchoolID: post.SchoolID,
 		UserID:   post.UserID,
 		Data: map[string]string{
-			"reason":      "ai_async_review_grace_expired",
+			"reason":       "ai_async_review_grace_expired",
 			"finalized_at": time.Now().Format(time.RFC3339),
 		},
 	}
@@ -158,7 +158,8 @@ type PostInfo struct {
 //
 // 注：当前为简化实现，需要 task-047 提供专用 DAO
 // 实际 SQL: SELECT id, school_id, user_id FROM posts
-//   WHERE status=8 AND updated_at < ? AND deleted_at IS NULL
+//
+//	WHERE status=8 AND updated_at < ? AND deleted_at IS NULL
 func scanTakenDownPendingPosts(deadline time.Time) ([]PostInfo, error) {
 	log.Printf("[TakenDownFinalizer] scanTakenDownPendingPosts stub (deadline=%s)", deadline.Format(time.RFC3339))
 	return nil, nil

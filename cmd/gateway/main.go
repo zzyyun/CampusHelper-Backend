@@ -57,9 +57,6 @@ func main() {
 	}
 	fmt.Println("[gateway] file-service client connected")
 
-
-
-
 	// ── HTTP Server ───────────────────────────────────────────────────────────
 	addr := config.Conf.Gateway.Address
 	srv := &http.Server{

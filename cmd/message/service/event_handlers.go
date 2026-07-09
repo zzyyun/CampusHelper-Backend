@@ -72,12 +72,12 @@ func HandleReviewResult(ctx context.Context, event *mq.ContentEvent) error {
 	title, notifType := FormatReviewTitle(event.Type, event.Data["reason"])
 
 	_, err := repo.Create(
-		event.UserID,     // 接收者 = 帖子作者
+		event.UserID, // 接收者 = 帖子作者
 		event.SchoolID,
 		notifType,
 		title,
 		"",
-		0,                // from_user_id = 0 (系统通知)
+		0, // from_user_id = 0 (系统通知)
 		"post",
 		event.PostID,
 	)
@@ -113,7 +113,7 @@ func HandleReplied(ctx context.Context, event *mq.ContentEvent) error {
 	var parentUserID int64
 	if _, err := fmt.Sscanf(parentUserIDStr, "%d", &parentUserID); err != nil || parentUserID == 0 {
 		log.Printf("[message-service] replied 事件缺少 parent_comment_user_id, 跳过")
-		return nil
+		return nil //nolint:nilerr // 事件数据不完整时静默跳过，不阻塞消费
 	}
 
 	title := FormatRepliedTitle(event.Data["content_preview"])
