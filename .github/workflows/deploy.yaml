@@ -100,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [gateway, user, content, task, message, file]
+        service: [gateway, user, content, task, message, file, ai-moderation, es]
 
     steps:
       - name: Checkout
@@ -136,11 +136,21 @@ jobs:
         id: short_sha
         run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      # es 的 Dockerfile 路径与其他服务不同，需单独处理
+      - name: Resolve Dockerfile path
+        id: dockerfile
+        run: |
+          if [ "${{ matrix.service }}" = "es" ]; then
+            echo "path=./deployments/docker/es-with-ik/Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=./build/docker/${{ matrix.service }}.Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build & Push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./build/docker/${{ matrix.service }}.Dockerfile
+          file: ${{ steps.dockerfile.outputs.path }}
           platforms: linux/amd64
           push: true
           tags: |
@@ -170,7 +180,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [gateway, user, content, task, message, file]
+        service: [gateway, user, content, task, message, file, ai-moderation, es]
 
     steps:
       - name: Run Trivy scan
@@ -215,6 +225,12 @@ jobs:
           scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
               deployments/docker/campus-docker-compose.yaml \
               ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/
+
+          # 写入 ACR_REGISTRY 到 .env（docker compose 展开 ${ACR_REGISTRY} 使用）
+          echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" > /tmp/campus.env
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              /tmp/campus.env \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/.env
 
           # 从模板生成配置文件并上传
           sed -e "s|__RDS_MYSQL_HOST__|${{ secrets.RDS_MYSQL_HOST }}|g" \

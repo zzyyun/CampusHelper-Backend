@@ -4,7 +4,11 @@
 #
 # 用法：
 #   cd deployments/docker
-#   docker compose -f campus-docker-compose.yaml up -d --build
+#   docker compose -f campus-docker-compose.yaml up -d
+#
+# 注意：所有业务服务使用 ACR 预构建镜像，需设置 ACR_REGISTRY 环境变量：
+#   export ACR_REGISTRY=registry.cn-hangzhou.aliyuncs.com/your-namespace
+#   或在 /opt/campus/.env 中配置 ACR_REGISTRY=...
 #
 # 验证：
 #   docker compose -f campus-docker-compose.yaml ps        # 查看健康状态
@@ -114,8 +118,7 @@ services:
     restart: always
 
   es:
-    build:
-      context: ./es-with-ik
+    image: ${ACR_REGISTRY}:v1.0-es-latest
     container_name: campus-es
     environment:
       - discovery.type=single-node
@@ -147,21 +150,15 @@ services:
     restart: always
 
   # ==================== 业务微服务 ====================
-  # 镜像由 build/docker/{service}.Dockerfile 构建
+  # 镜像由 CI 构建并推送到 ACR，ECS 只做 pull + run
   # 启动顺序：依赖 etcd 健康后启动；其他服务互不依赖
   # env_file 引用 ECS 上 /opt/campus/.env（不入仓）
 
   gateway:
-    build:
-      context: ../..
-      dockerfile: build/docker/gateway.Dockerfile
-      # build-arg 通过 env_file 注入：海外用 distroless，国内用 alpine
-      args:
-        - BASE_IMAGE=${BASE_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
-        - RUNTIME_USER=${RUNTIME_USER:-nonroot:nonroot}
+    image: ${ACR_REGISTRY}:v1.0-gateway-latest
+    container_name: campus-gateway
     volumes:
       - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
-    container_name: campus-gateway
     env_file:
       - /opt/campus/.env
     environment:
@@ -188,16 +185,10 @@ services:
     restart: always
 
   user:
-    build:
-      context: ../..
-      dockerfile: build/docker/user.Dockerfile
-      # build-arg 通过 env_file 注入：海外用 distroless，国内用 alpine
-      args:
-        - BASE_IMAGE=${BASE_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
-        - RUNTIME_USER=${RUNTIME_USER:-nonroot:nonroot}
+    image: ${ACR_REGISTRY}:v1.0-user-latest
+    container_name: campus-user
     volumes:
       - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
-    container_name: campus-user
     env_file:
       - /opt/campus/.env
     environment:
@@ -224,16 +215,10 @@ services:
     restart: always
 
   content:
-    build:
-      context: ../..
-      dockerfile: build/docker/content.Dockerfile
-      # build-arg 通过 env_file 注入：海外用 distroless，国内用 alpine
-      args:
-        - BASE_IMAGE=${BASE_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
-        - RUNTIME_USER=${RUNTIME_USER:-nonroot:nonroot}
+    image: ${ACR_REGISTRY}:v1.0-content-latest
+    container_name: campus-content
     volumes:
       - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
-    container_name: campus-content
     env_file:
       - /opt/campus/.env
     environment:
@@ -262,16 +247,10 @@ services:
     restart: always
 
   task:
-    build:
-      context: ../..
-      dockerfile: build/docker/task.Dockerfile
-      # build-arg 通过 env_file 注入：海外用 distroless，国内用 alpine
-      args:
-        - BASE_IMAGE=${BASE_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
-        - RUNTIME_USER=${RUNTIME_USER:-nonroot:nonroot}
+    image: ${ACR_REGISTRY}:v1.0-task-latest
+    container_name: campus-task
     volumes:
       - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
-    container_name: campus-task
     env_file:
       - /opt/campus/.env
     environment:
@@ -298,16 +277,10 @@ services:
     restart: always
 
   message:
-    build:
-      context: ../..
-      dockerfile: build/docker/message.Dockerfile
-      # build-arg 通过 env_file 注入：海外用 distroless，国内用 alpine
-      args:
-        - BASE_IMAGE=${BASE_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
-        - RUNTIME_USER=${RUNTIME_USER:-nonroot:nonroot}
+    image: ${ACR_REGISTRY}:v1.0-message-latest
+    container_name: campus-message
     volumes:
       - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
-    container_name: campus-message
     env_file:
       - /opt/campus/.env
     environment:
@@ -336,16 +309,10 @@ services:
     restart: always
 
   file:
-    build:
-      context: ../..
-      dockerfile: build/docker/file.Dockerfile
-      # build-arg 通过 env_file 注入：海外用 distroless，国内用 alpine
-      args:
-        - BASE_IMAGE=${BASE_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
-        - RUNTIME_USER=${RUNTIME_USER:-nonroot:nonroot}
+    image: ${ACR_REGISTRY}:v1.0-file-latest
+    container_name: campus-file
     volumes:
       - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
-    container_name: campus-file
     env_file:
       - /opt/campus/.env
     environment:
@@ -409,9 +376,7 @@ services:
 
   # ==================== AI 审核服务 ====================
   ai-moderation:
-    build:
-      context: ../../
-      dockerfile: build/docker/ai-moderation.Dockerfile
+    image: ${ACR_REGISTRY}:v1.0-ai-moderation-latest
     container_name: campus-ai-moderation
     ports:
       - "50061:50061"   # gRPC
