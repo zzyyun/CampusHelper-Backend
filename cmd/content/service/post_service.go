@@ -1057,7 +1057,6 @@ var (
 	errInvalidArgument = errors.New("invalid argument")
 	errNotFound        = errors.New("not found")
 	errForbidden       = errors.New("permission denied")
-	errUnimplemented   = errors.New("unimplemented")
 )
 
 // SensitiveWordErrorType 敏感词错误类型（用于 errors.As 提取）
