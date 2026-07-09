@@ -26,3 +26,6 @@ worktrees/
 # SSH 密钥文件（部署用，不入仓）
 github_actions
 github_actions.pub
+
+# 编译产物
+gateway

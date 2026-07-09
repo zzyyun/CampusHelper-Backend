@@ -201,17 +201,27 @@ type listSchoolsReq struct {
 	Cursor   string `form:"cursor"`
 }
 
-// ListSchools 搜索/列出学校。JWT 鉴权，不强绑学校。
+// ListSchools 搜索/列出学校。游客也可搜索（用于绑定学校），不强制认证。
 func ListSchools(c *gin.Context) {
 	var req listSchoolsReq
 	if err := c.ShouldBindQuery(&req); err != nil {
 		middleware.ErrorResponse(c, errcode.ErrInvalidParam, "参数错误: "+err.Error())
 		return
 	}
-	ctx, ok := authCtx(c)
-	if !ok {
-		return
-	}
+
+	// 构造 gRPC metadata，游客时 uid/sid 均为 0
+	ctx := c.Request.Context()
+	uid, _ := userID(c)
+	sid, _ := schoolID(c)
+	role, _ := c.Get(middleware.CtxRole)
+	r, _ := role.(int8)
+	md := metadata.Pairs(
+		"user-id", strconv.FormatInt(uid, 10),
+		"user-role", strconv.FormatInt(int64(r), 10),
+		"school-id", strconv.FormatInt(sid, 10),
+	)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
 	pageSize := req.PageSize
 	if pageSize <= 0 || pageSize > 50 {
 		pageSize = 20

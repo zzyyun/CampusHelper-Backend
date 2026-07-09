@@ -25,5 +25,5 @@ Page({
   onTabChange(e){const t=e.currentTarget.dataset.tab;if(t===this.data.activeTab)return;this.setData({activeTab:t,posts:[],cursor:'',hasMore:true});this.loadPosts()},
   onPostTap(e){wx.navigateTo({url:'/pages/post/detail?id='+e.currentTarget.dataset.id})},
   onSearch(){wx.navigateTo({url:'/pages/search/search'})},
-  onCreatePost(){wx.navigateTo({url:'/pages/post/create'})}
+  onCreatePost(){if(!api.requireLogin())return;wx.navigateTo({url:'/pages/post/create'})}
 })

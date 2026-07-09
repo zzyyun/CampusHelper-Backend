@@ -9,4 +9,6 @@
 .login-btn:active { background: var(--primary-dark); }
 .login-btn[disabled] { opacity: 0.6; }
 .btn-text { font-size: 30rpx; font-weight: 500; }
+.skip-btn { margin-top: 32rpx; padding: 16rpx 32rpx; }
+.skip-text { font-size: 28rpx; color: var(--text-hint); text-decoration: underline; }
 .login-error { font-size: 24rpx; color: var(--danger); margin-top: 20rpx; text-align: center; }

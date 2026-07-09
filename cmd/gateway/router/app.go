@@ -28,8 +28,8 @@ func NewRouter() *gin.Engine {
 	// ── API v1 ─────────────────────────────────────────────────────────────
 	v1 := r.Group("/api/v1")
 
-	// User Service – schools route
-	schools := v1.Group("/schools", middleware.JWTAuth())
+	// User Service – schools route（游客可搜索学校列表，用于绑定学校）
+	schools := v1.Group("/schools", middleware.OptionalJWTAuth())
 	{
 		schools.GET("", handler.ListSchools)
 	}
@@ -68,37 +68,39 @@ func NewRouter() *gin.Engine {
 		notifications.DELETE("/:id", handler.DeleteNotification)
 	}
 
-	// Task Service – routes (Issue #66)
-	// 读路由：List/Get — JWT 鉴权，不强绑 school
-	tasks := v1.Group("/tasks", middleware.JWTAuth())
+	// Task Service – routes (Issue #66, 游客模式)
+	// 读路由：游客可浏览任务列表和详情
+	tasksRead := v1.Group("/tasks", middleware.OptionalJWTAuth())
 	{
-		tasks.GET("", handler.ListTasks)
-		tasks.GET("/:id", handler.GetTask)
-
-		// 写路由：JWT + 学校绑定
-		write := tasks.Group("", middleware.RequireSchoolBound())
-		{
-			write.POST("", handler.CreateTask)
-			write.PUT("/:id", handler.UpdateTask)
-			write.DELETE("/:id", handler.DeleteTask)
-			write.POST("/:id/claim", handler.ClaimTask)
-			write.PUT("/:id/complete", handler.CompleteTask)
-			write.PUT("/:id/cancel", handler.CancelTask)
-		}
+		tasksRead.GET("", handler.ListTasks)
+		tasksRead.GET("/:id", handler.GetTask)
+	}
+	// 写路由：JWT + 学校绑定
+	tasksWrite := v1.Group("/tasks", middleware.JWTAuth(), middleware.RequireSchoolBound())
+	{
+		tasksWrite.POST("", handler.CreateTask)
+		tasksWrite.PUT("/:id", handler.UpdateTask)
+		tasksWrite.DELETE("/:id", handler.DeleteTask)
+		tasksWrite.POST("/:id/claim", handler.ClaimTask)
+		tasksWrite.PUT("/:id/complete", handler.CompleteTask)
+		tasksWrite.PUT("/:id/cancel", handler.CancelTask)
 	}
 
-	
-		// File Service – routes (Issue #79)
-	// 读路由：GetFile — JWT 鉴权，不强绑 school
-	files := v1.Group("/files", middleware.JWTAuth())
+	// File Service – routes (Issue #79, 游客模式)
+	// 读路由：游客可查看文件元数据
+	filesRead := v1.Group("/files", middleware.OptionalJWTAuth())
 	{
-		files.POST("/upload", handler.UploadFile)
-		files.GET("/:id", handler.GetFile)
+		filesRead.GET("/:id", handler.GetFile)
+	}
+	// 写路由：JWT 鉴权（上传不需要学校绑定）
+	filesWrite := v1.Group("/files", middleware.JWTAuth())
+	{
+		filesWrite.POST("/upload", handler.UploadFile)
 
-		// 写路由：JWT + 学校绑定
-		write := files.Group("", middleware.RequireSchoolBound())
+		// 删除：JWT + 学校绑定
+		delete := filesWrite.Group("", middleware.RequireSchoolBound())
 		{
-			write.DELETE("/:id", handler.DeleteFile)
+			delete.DELETE("/:id", handler.DeleteFile)
 		}
 	}
 
@@ -121,30 +123,27 @@ func NewRouter() *gin.Engine {
 		superAdminRole.POST("/set-role", handler.AdminSetUserRole)
 	}
 
-// Content Service – authenticated routes (Issue #22, #41)
-	//   12 个接口：帖子 CRUD / 评论 / 回复 / 点赞 / 搜索
-	//   - 读路由（List/Get/Search/ListComments）：仅 JWT，未绑定学校也能浏览
-	//   - 写路由（Create/Update/Delete/Like/Comment）：JWT + RequireSchoolBound
-	content := v1.Group("/content", middleware.JWTAuth())
+// Content Service – routes (Issue #22, #41, 游客模式)
+	//   读路由（List/Get/Search/ListComments）：游客可浏览
+	//   写路由（Create/Update/Delete/Like/Comment）：JWT + RequireSchoolBound
+	contentRead := v1.Group("/content", middleware.OptionalJWTAuth())
 	{
-		// 读
-		content.GET("/posts", handler.ListPosts)                         // 列表
-		content.GET("/posts/:id", handler.GetPost)                       // 详情
-		content.GET("/posts/:id/comments", handler.ListComments)         // 评论列表
-		content.GET("/comments/:id/replies", handler.ListCommentReplies) // 回复列表
-		content.POST("/search", handler.SearchContent)                   // 关键词搜索
+		contentRead.GET("/posts", handler.ListPosts)
+		contentRead.GET("/posts/:id", handler.GetPost)
+		contentRead.GET("/posts/:id/comments", handler.ListComments)
+		contentRead.GET("/comments/:id/replies", handler.ListCommentReplies)
+		contentRead.POST("/search", handler.SearchContent)
+	}
 
-		// 写：JWT + 学校绑定
-		write := content.Group("", middleware.RequireSchoolBound())
-		{
-			write.POST("/posts", handler.CreatePost)             // 发帖
-			write.PUT("/posts/:id", handler.UpdatePost)          // 编辑
-			write.DELETE("/posts/:id", handler.DeletePost)       // 删帖
-			write.POST("/posts/:id/like", handler.LikePost)      // 点赞
-			write.DELETE("/posts/:id/like", handler.UnlikePost)  // 取消点赞
-			write.POST("/comments", handler.CreateComment)       // 写评论
-			write.DELETE("/comments/:id", handler.DeleteComment) // 删评论
-		}
+	contentWrite := v1.Group("/content", middleware.JWTAuth(), middleware.RequireSchoolBound())
+	{
+		contentWrite.POST("/posts", handler.CreatePost)
+		contentWrite.PUT("/posts/:id", handler.UpdatePost)
+		contentWrite.DELETE("/posts/:id", handler.DeletePost)
+		contentWrite.POST("/posts/:id/like", handler.LikePost)
+		contentWrite.DELETE("/posts/:id/like", handler.UnlikePost)
+		contentWrite.POST("/comments", handler.CreateComment)
+		contentWrite.DELETE("/comments/:id", handler.DeleteComment)
 	}
 
 	return r

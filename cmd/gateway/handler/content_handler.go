@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/metadata"
 
 	common_pb "go_projects/praProject1/PB/pb/common_pb"
 	content_pb "go_projects/praProject1/PB/pb/content_pb"
@@ -489,16 +490,26 @@ func authCtxWithIDs(c *gin.Context) (context.Context, int64, int64, bool) {
 	return ctx, uid, sid, true
 }
 
-// readCtxWithIDs 读接口上下文：仅需 JWT，不强制 school 绑定。
+// readCtxWithIDs 读接口上下文：支持游客模式（user_id 可为 0）。
 //
-// 仍构造 outbound metadata 让下游能拿到 viewer_user_id / school_id；
-// 即使 sid=0 也照常转发，由服务端按业务策略决定是否做学校隔离。
+// 有 JWT → 注入完整身份；无 JWT → uid=0, sid=0，由下游业务策略决定返回内容。
+// 始终构造 outbound metadata，保证 TraceID 和下游 gRPC metadata 不断裂。
 func readCtxWithIDs(c *gin.Context) (context.Context, int64, int64, bool) {
-	ctx, uid, sid, ok := authCtxWithIDs(c)
-	if !ok {
-		return nil, 0, 0, false
-	}
-	return ctx, uid, sid, true
+	ctx := c.Request.Context()
+
+	uid, _ := userID(c)   // 游客时返回 0, false
+	sid, _ := schoolID(c) // 游客时返回 0, false
+
+	// 读取 role；游客时为 0
+	role, _ := c.Get(middleware.CtxRole)
+	r, _ := role.(int8)
+
+	md := metadata.Pairs(
+		"user-id", strconv.FormatInt(uid, 10),
+		"user-role", strconv.FormatInt(int64(r), 10),
+		"school-id", strconv.FormatInt(sid, 10),
+	)
+	return metadata.NewOutgoingContext(ctx, md), uid, sid, true
 }
 
 // userID 从 gin.Context 读 user_id；JWT 中间件保证已注入。
