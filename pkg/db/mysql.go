@@ -100,32 +100,28 @@ func registerSlowQueryLogger(db *gorm.DB, service string) error {
 		}
 	}
 
-	// 注册各操作类型的慢查询监控回调（GORM Register 返回 compile 错误，正常不应触发）
-	callbacks := []struct {
-		phase    string
-		action   string
-		callback func() *gorm.DB
+	// callbackReg 定义回调注册器类型，封装 Before/After 链式调用
+	type callbackReg func(string, func(*gorm.DB)) error
+
+	// 注册各操作类型的慢查询监控回调
+	registrations := []struct {
+		reg  callbackReg // 注册器
+		name string      // 回调名（必须唯一）
+		fn   func(*gorm.DB)
 	}{
-		{"Before", "gorm:query", func() *gorm.DB { return db.Callback().Query().Before("gorm:query") }},
-		{"After", "gorm:query", func() *gorm.DB { return db.Callback().Query().After("gorm:query") }},
-		{"Before", "gorm:create", func() *gorm.DB { return db.Callback().Create().Before("gorm:create") }},
-		{"After", "gorm:create", func() *gorm.DB { return db.Callback().Create().After("gorm:create") }},
-		{"Before", "gorm:update", func() *gorm.DB { return db.Callback().Update().Before("gorm:update") }},
-		{"After", "gorm:update", func() *gorm.DB { return db.Callback().Update().After("gorm:update") }},
-		{"Before", "gorm:delete", func() *gorm.DB { return db.Callback().Delete().Before("gorm:delete") }},
-		{"After", "gorm:delete", func() *gorm.DB { return db.Callback().Delete().After("gorm:delete") }},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Query().Before("gorm:query").Register(n, fn) }, "slow_query:before_query", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Query().After("gorm:query").Register(n, fn) }, "slow_query:after_query", afterFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Create().Before("gorm:create").Register(n, fn) }, "slow_query:before_create", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Create().After("gorm:create").Register(n, fn) }, "slow_query:after_create", afterFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Update().Before("gorm:update").Register(n, fn) }, "slow_query:before_update", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Update().After("gorm:update").Register(n, fn) }, "slow_query:after_update", afterFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Delete().Before("gorm:delete").Register(n, fn) }, "slow_query:before_delete", beforeFn},
+		{func(n string, fn func(*gorm.DB)) error { return db.Callback().Delete().After("gorm:delete").Register(n, fn) }, "slow_query:after_delete", afterFn},
 	}
 
-	fnMap := map[string]func(*gorm.DB){
-		"Before": beforeFn,
-		"After":  afterFn,
-	}
-
-	for _, c := range callbacks {
-		phase := c.phase
-		name := fmt.Sprintf("slow_query:%s_%s", phase, c.action)
-		if err := c.callback().Register(name, fnMap[phase]); err != nil {
-			return fmt.Errorf("注册回调 %s 失败: %w", name, err)
+	for _, r := range registrations {
+		if err := r.reg(r.name, r.fn); err != nil {
+			return fmt.Errorf("注册回调 %s 失败: %w", r.name, err)
 		}
 	}
 

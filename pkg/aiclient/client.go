@@ -20,6 +20,7 @@ import (
 	"time"
 
 	ai_moderation_pb "go_projects/praProject1/PB/pb/ai_moderation_pb"
+	"go_projects/praProject1/pkg/contextx"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -123,7 +124,7 @@ func NewClient(cfg Config) (ModerationClient, error) {
 //     - 失败 → 记录失败次数
 func (c *grpcClient) ModerateText(ctx context.Context, text string, postID int64) (*ai_moderation_pb.ModerateTextResponse, error) {
 	// 构造带 trace_id 的 ctx
-	traceID, _ := ctx.Value("trace_id").(string)
+	traceID, _ := ctx.Value(contextx.TraceIDKey{}).(string)
 
 	result, err := c.circuit.Execute(func() (interface{}, error) {
 		callCtx, cancel := context.WithTimeout(ctx, c.timeout)

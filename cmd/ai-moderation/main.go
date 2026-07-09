@@ -85,7 +85,7 @@ func main() {
 		ModelHash:          viper.GetString("aiModeration.modelHash"),
 		Enabled:            viper.GetBool("aiModeration.enabled"),
 		IntraOpNumThreads:  viper.GetInt("aiModeration.intraOpNumThreads"),
-		EnableCpuMemArena:  viper.GetBool("aiModeration.enableCpuMemArena"),
+		EnableCPUMemArena:  viper.GetBool("aiModeration.enableCpuMemArena"),
 		TimeoutMs:          viper.GetInt("aiModeration.timeoutMs"),
 	}
 	loader, err := ai_moderation.NewModelLoader(modelCfg)
