@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"go_projects/praProject1/config"
 	"github.com/redis/go-redis/v9"
+	"go_projects/praProject1/config"
 )
 
 var RDB *redis.Client

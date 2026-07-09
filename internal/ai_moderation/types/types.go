@@ -40,12 +40,12 @@ func (r Result) String() string {
 
 // InferenceResult 单次 AI 推理输出。
 type InferenceResult struct {
-	Result       Result    // pass/review/block
-	Confidence   float32   // 0.0 - 1.0
-	Categories   []string  // 命中类别（如 ["涉政", "广告引流"]）
-	LatencyMs    int64     // 推理耗时
-	ModelVersion string    // 模型版本
-	FallbackUsed bool      // 是否走降级（mock 模式恒为 true，真实模式下推理异常时为 true）
+	Result       Result   // pass/review/block
+	Confidence   float32  // 0.0 - 1.0
+	Categories   []string // 命中类别（如 ["涉政", "广告引流"]）
+	LatencyMs    int64    // 推理耗时
+	ModelVersion string   // 模型版本
+	FallbackUsed bool     // 是否走降级（mock 模式恒为 true，真实模式下推理异常时为 true）
 }
 
 // ModelConfig 模型加载配置。

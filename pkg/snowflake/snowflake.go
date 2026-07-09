@@ -11,19 +11,19 @@ const (
 
 	// 各部分位数
 	timestampBits  = 41 // 时间戳占用41位
-	datacenterBits  = 5  // 数据中心占用5位
-	machineBits     = 5  // 机器标识占用5位
-	sequenceBits    = 12 // 序列号占用12位
+	datacenterBits = 5  // 数据中心占用5位
+	machineBits    = 5  // 机器标识占用5位
+	sequenceBits   = 12 // 序列号占用12位
 
 	// 各部分最大值
-	maxDatacenterID = -1 ^ (-1 << datacenterBits)  // 最大数据中心ID
-	maxMachineID    = -1 ^ (-1 << machineBits)     // 最大机器ID
-	maxSequence     = -1 ^ (-1 << sequenceBits)    // 最大序列号
+	maxDatacenterID = -1 ^ (-1 << datacenterBits) // 最大数据中心ID
+	maxMachineID    = -1 ^ (-1 << machineBits)    // 最大机器ID
+	maxSequence     = -1 ^ (-1 << sequenceBits)   // 最大序列号
 
 	// 各部分左移位数
 	timestampShift  = sequenceBits + datacenterBits + machineBits // 时间戳左移位数
-	datacenterShift = sequenceBits + machineBits                   // 数据中心左移位数
-	machineShift    = sequenceBits                                  // 机器标识左移位数
+	datacenterShift = sequenceBits + machineBits                  // 数据中心左移位数
+	machineShift    = sequenceBits                                // 机器标识左移位数
 )
 
 // Snowflake 雪花算法结构体

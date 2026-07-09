@@ -199,4 +199,3 @@ func CleanupBefore(before time.Time) (int64, error) {
 func genNotificationID() int64 {
 	return snowflake.GenerateID()
 }
-
