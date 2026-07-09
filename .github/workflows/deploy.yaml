@@ -203,6 +203,16 @@ jobs:
         id: short_sha
         run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Upload deploy script
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          source: "scripts/deploy-ecs.sh"
+          target: "/tmp/campus-deploy"
+          strip_components: 0
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -210,10 +220,7 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           script: |
-            # 设置镜像 registry
             export ACR_REGISTRY="${{ env.ACR_REGISTRY }}"
             export SHORT_SHA="${{ steps.short_sha.outputs.value }}"
 
-            # 部署脚本（在 ECS 上执行）
-            cd /opt/campus-helper
-            bash scripts/deploy-ecs.sh ${{ inputs.service || 'all' }} $SHORT_SHA
+            bash /tmp/campus-deploy/scripts/deploy-ecs.sh ${{ inputs.service || 'all' }} $SHORT_SHA
