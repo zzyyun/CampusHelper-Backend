@@ -183,14 +183,15 @@ jobs:
           ignore-unfixed: true
 
   # ════════════════════════════════════════════════════════════════════════════════
-  # 5. 部署到 ECS（仅 main 分支 + 手动触发时执行）
+  # 5. 部署到 ECS（push main 自动部署，也支持手动触发）
   # ════════════════════════════════════════════════════════════════════════════════
   deploy:
     name: Deploy to ECS
     needs: [build-and-push, security-scan]
     if: >
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.deploy == true))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production      # 需要在 GitHub Settings → Environments 配置
