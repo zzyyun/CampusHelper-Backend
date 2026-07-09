@@ -86,6 +86,7 @@ deploy_service() {
     --name "$container_name" \
     --restart unless-stopped \
     -p "$ports" \
+    -v /opt/campus/config:/config:ro \
     $env_file \
     $extra_args \
     "$image"
