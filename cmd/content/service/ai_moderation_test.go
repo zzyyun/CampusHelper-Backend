@@ -6,6 +6,7 @@ import (
 
 	ai_moderation_pb "go_projects/praProject1/PB/pb/ai_moderation_pb"
 	"go_projects/praProject1/cmd/content/model"
+	"go_projects/praProject1/pkg/contextx"
 )
 
 // ─── decidePostStatus 测试 ─────────────────────────────────────────────────
@@ -120,7 +121,7 @@ func TestSha256Hex_KnownValue(t *testing.T) {
 // ─── extractTraceID 测试 ───────────────────────────────────────────────────
 
 func TestExtractTraceID_FromContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "trace_id", "abc-123")
+	ctx := context.WithValue(context.Background(), contextx.TraceIDKey{}, "abc-123")
 	traceID := extractTraceID(ctx)
 	if traceID != "abc-123" {
 		t.Errorf("expected abc-123, got %s", traceID)
