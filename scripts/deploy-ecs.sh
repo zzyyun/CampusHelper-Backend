@@ -77,8 +77,8 @@ deploy_service() {
 
   # 读取环境变量文件（如果存在）
   local env_file=""
-  if [ -f "/opt/campus-helper/config/${service}.env" ]; then
-    env_file="--env-file /opt/campus-helper/config/${service}.env"
+  if [ -f "/opt/campus/config/${service}.env" ]; then
+    env_file="--env-file /opt/campus/config/${service}.env"
   fi
 
   # shellcheck disable=SC2086
