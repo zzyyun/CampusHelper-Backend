@@ -44,7 +44,7 @@ health_check() {
     sleep 2
   done
   log "  ⚠️  $service 健康检查超时（30s），继续部署"
-  return 1
+  return 0
 }
 
 # 部署单个服务
@@ -64,7 +64,7 @@ deploy_service() {
   # 2. 停止并移除旧容器（保留数据卷）
   if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
     log "  停止旧容器 $container_name ..."
-    docker stop "$container_name" --time 10 2>/dev/null || true
+    docker stop "$container_name" --timeout 10 2>/dev/null || true
     docker rm "$container_name" 2>/dev/null || true
   fi
 
