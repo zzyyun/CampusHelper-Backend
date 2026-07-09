@@ -146,25 +146,25 @@ func (c *Consumer) handleMessage(msg amqp091.Delivery) {
 	var event ContentEvent
 	if err := json.Unmarshal(msg.Body, &event); err != nil {
 		log.Printf("[MQ-Consumer] 消息解析失败，丢弃: %v", err)
-		msg.Nack(false, false) // 不可恢复，丢弃
+		_ = msg.Nack(false, false) // 不可恢复，丢弃
 		return
 	}
 
 	handler, ok := c.handlers[event.Type]
 	if !ok {
 		log.Printf("[MQ-Consumer] 未注册的事件类型 %s，确认丢弃", event.Type)
-		msg.Ack(false) // 确认已处理（无处理器则丢弃）
+		_ = msg.Ack(false) // 确认已处理（无处理器则丢弃）
 		return
 	}
 
 	ctx := context.Background()
 	if err := handler(ctx, &event); err != nil {
 		log.Printf("[MQ-Consumer] 处理事件失败 type=%s post=%d: %v，重新入队", event.Type, event.PostID, err)
-		msg.Nack(false, true) // 重新入队
+		_ = msg.Nack(false, true) // 重新入队
 		return
 	}
 
-	msg.Ack(false)
+	_ = msg.Ack(false)
 }
 
 // reconnect 重连逻辑。

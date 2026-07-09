@@ -161,11 +161,14 @@ func TestModerationClient_DefaultTimeout(t *testing.T) {
 	// 默认 800ms 是在 NewClient 内设置的
 }
 
+// traceContextKey 自定义 context key 类型，避免使用内建类型 string 作为 key
+type traceContextKey struct{}
+
 // ─── Context trace_id 测试 ──────────────────────────────────────────────────
 
 func TestContextTraceID(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "trace_id", "trace-abc-123")
-	traceID, _ := ctx.Value("trace_id").(string)
+	ctx := context.WithValue(context.Background(), traceContextKey{}, "trace-abc-123")
+	traceID, _ := ctx.Value(traceContextKey{}).(string)
 	if traceID != "trace-abc-123" {
 		t.Errorf("trace_id extraction failed: %s", traceID)
 	}
@@ -173,7 +176,7 @@ func TestContextTraceID(t *testing.T) {
 
 func TestContextMissingTraceID(t *testing.T) {
 	ctx := context.Background()
-	traceID, _ := ctx.Value("trace_id").(string)
+	traceID, _ := ctx.Value(traceContextKey{}).(string)
 	if traceID != "" {
 		t.Errorf("missing trace_id should be empty, got %s", traceID)
 	}

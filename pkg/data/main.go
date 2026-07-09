@@ -28,7 +28,6 @@ import (
 	"go_projects/praProject1/config"
 	"go_projects/praProject1/pkg/db"
 
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

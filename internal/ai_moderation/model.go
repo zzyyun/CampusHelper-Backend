@@ -19,11 +19,8 @@ package ai_moderation
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 )
 

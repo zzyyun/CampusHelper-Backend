@@ -51,6 +51,15 @@ linters:
       - linters:
           - govet
         text: "unused write to field"
+      # 以下包名含下划线，属历史遗留，暂不重命名包，排除 ST1003
+      - linters:
+          - staticcheck
+        text: ST1003
+        path: cmd/user/database/
+      - linters:
+          - staticcheck
+        text: ST1003
+        path: internal/ai_moderation/
     paths:
       - third_party$
       - builtin$
