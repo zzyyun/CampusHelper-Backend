@@ -199,37 +199,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Upload deploy files
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          source: "scripts/deploy-ecs.sh,deployments/docker/campus-docker-compose.yaml"
-          target: "/opt/campus"
-          strip_components: 2
-
-      - name: Generate and upload config
+      - name: Upload files and deploy
+        env:
+          SSH_KEY: /tmp/ecs_key
         run: |
+          # 准备 SSH 密钥
+          echo "${{ secrets.ECS_SSH_KEY }}" > "$SSH_KEY"
+          chmod 600 "$SSH_KEY"
+
+          # 上传部署脚本和 docker-compose 文件
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              scripts/deploy-ecs.sh \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              deployments/docker/campus-docker-compose.yaml \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/
+
+          # 从模板生成配置文件并上传
           sed -e "s|__RDS_MYSQL_HOST__|${{ secrets.RDS_MYSQL_HOST }}|g" \
               -e "s|__RDS_MYSQL_PASS__|${{ secrets.RDS_MYSQL_PASS }}|g" \
               -e "s|__TAIR_REDIS_HOST__|${{ secrets.TAIR_REDIS_HOST }}|g" \
               -e "s|__WECHAT_APP_ID__|${{ secrets.WECHAT_APP_ID }}|g" \
               -e "s|__WECHAT_APP_SECRET__|${{ secrets.WECHAT_APP_SECRET }}|g" \
               config/my_config.ecs.yaml.template > /tmp/my_config.yaml
-          echo "${{ secrets.ECS_SSH_KEY }}" > /tmp/ecs_key
-          chmod 600 /tmp/ecs_key
-          scp -o StrictHostKeyChecking=no \
-              -i /tmp/ecs_key \
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
               /tmp/my_config.yaml \
               ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/config/my_config.yaml
-          rm /tmp/my_config.yaml /tmp/ecs_key
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          script: |
-            bash /opt/campus/deploy-ecs.sh ${{ inputs.service || 'all' }}
+          # 执行部署
+          ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} \
+              "bash /opt/campus/deploy-ecs.sh ${{ inputs.service || 'all' }}"
+
+          rm -f "$SSH_KEY" /tmp/my_config.yaml
