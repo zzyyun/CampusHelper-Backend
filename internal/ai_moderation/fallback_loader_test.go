@@ -22,12 +22,6 @@ func (m *mockFailLoader) Infer(_ context.Context, _ string) (*types.InferenceRes
 func (m *mockFailLoader) Version() string          { return "fail-loader" }
 func (m *mockFailLoader) Close() error              { return nil }
 
-// mockSlowLoader 模拟慢速推理（可配置延迟）。
-type mockSlowLoader struct {
-	delay int // ms
-	*MockLoader
-}
-
 func TestFallbackLoader_PrimarySuccess(t *testing.T) {
 	primary := NewMockLoader("primary")
 	fallback := NewMockLoader("fallback")

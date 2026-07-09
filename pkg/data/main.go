@@ -97,16 +97,6 @@ func main() {
 		len(schools), time.Since(start).Round(time.Millisecond))
 }
 
-// openMySQL 根据配置拼装 DSN 并建立 GORM 连接。
-func openMySQL(cfg config.MysqlConfig) (*gorm.DB, error) {
-	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port,
-		cfg.UserDatabase, cfg.Charset,
-	)
-	return gorm.Open(mysql.Open(dsn), &gorm.Config{})
-}
-
 // resolveCSVPath 跨平台解析默认 CSV 路径：
 //  1. 优先使用源文件所在目录（pkg/data/schools.csv），适用于 `go run ./pkg/data`
 //  2. 回退到当前工作目录，便于手动指定 cwd 执行

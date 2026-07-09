@@ -39,7 +39,6 @@ type FallbackLoader struct {
 	// 降级状态（0=正常使用 primary，1=已降级使用 fallback）
 	degraded   int32
 	degradeOnce sync.Once
-	mu         sync.RWMutex
 	stopCh     chan struct{} // 关闭时通知 recoveryCheck goroutine 退出
 }
 
