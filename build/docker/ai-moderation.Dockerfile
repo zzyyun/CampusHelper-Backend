@@ -32,16 +32,16 @@ FROM ${BASE_IMAGE}
 
 ARG ONNXRUNTIME_VERSION
 
-# 安装运行时依赖 + 下载 ONNX Runtime
+# 安装运行时依赖 + 下载 ONNX Runtime（curl 在 bookworm-slim 中自带）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates wget libgomp1 \
-    && wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
-       -O /tmp/ort.tgz \
+      ca-certificates libgomp1 \
+    && curl -fsSL https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+       -o /tmp/ort.tgz \
     && tar -xzf /tmp/ort.tgz -C /tmp \
     && cp /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}/lib/libonnxruntime.so.${ONNXRUNTIME_VERSION} /usr/lib/ \
     && ln -s /usr/lib/libonnxruntime.so.${ONNXRUNTIME_VERSION} /usr/lib/onnxruntime.so \
     && rm -rf /tmp/ort.tgz /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION} \
-    && apt-get purge -y wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 # 从 builder 复制编译产物
 COPY --from=builder /app/ai-moderation /usr/local/bin/ai-moderation
