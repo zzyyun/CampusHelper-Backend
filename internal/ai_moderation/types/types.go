@@ -1,9 +1,9 @@
 // Package types 定义 ai_moderation 服务的公共 API 类型（Result/Config/Loader/Result）。
 //
 // 这些类型被 ai_moderation 主包与 onnxruntime 子包共同使用，独立成包是为了
-// 打破"主包 import onnxruntime 子包 ↔ 子包 import 主包"形成的循环依赖。
+// 打破"主包 import onnxruntime 子包 ↔ 子包 import ��包"形成的循环依赖。
 //
-// 引入新类型时务必：保持零外部依赖（仅 stdlib），便于交叉编译。
+// 引入新类型时务必：保持零外部依赖���仅 stdlib），便���交叉编译。
 package types
 
 import (
@@ -41,25 +41,49 @@ func (r Result) String() string {
 // InferenceResult 单次 AI 推理输出。
 type InferenceResult struct {
 	Result       Result   // pass/review/block
-	Confidence   float32  // 0.0 - 1.0
-	Categories   []string // 命中类别（如 ["涉政", "广告引流"]）
-	LatencyMs    int64    // 推理耗时
+	Confidence   float32  // 0.0 - 1.0��违规概率，值越高越可能违规）
+	Categories   []string // 命中类别（如 ["涉政", "广告引流"], ["toxic"]）
+	LatencyMs    int64    // 推���耗时
 	ModelVersion string   // 模型版本
 	FallbackUsed bool     // 是否走降级（mock 模式恒为 true，真实模式下推理异常时为 true）
 }
 
-// ModelConfig 模型加载配置。
+// ModelConfig 模��加载配置。
 type ModelConfig struct {
-	ModelPath         string // ONNX 模型文件路径（volume 挂载）
-	ModelVersion      string // 模型版本标识
-	ModelHash         string // 模型文件 SHA256（启动时校验）
-	Enabled           bool   // true=加载真实 ONNX 模型, false=mock 模式
-	IntraOpNumThreads int    // ONNX 内部线程数
-	EnableCPUMemArena bool   // ONNX CPU memory arena
-	TimeoutMs         int    // 单次推理超时
+	ModelPath         string   // ONNX 模型文件路径（volume 挂载���
+	ModelVersion      string   // 模型版本标识
+	ModelHash         string   // 模型文件 SHA256（启动时校验）
+	VocabPath         string   // vocab.txt 路径（空则自动在 ModelPath 同目录查找）
+	CategoryNames     []string // 模型输出类别名称（如 ["safe","toxic"], ["正常","违规"]）
+	NumClasses        int      // 模型输出类别数（0=自动从 ONNX 推断）
+	Enabled           bool     // true=加载真实 ONNX 模型, false=mock 模式
+	IntraOpNumThreads int      // ONNX 内部线程数
+	EnableCPUMemArena bool     // ONNX CPU memory arena
+	TimeoutMs         int      // 单次推理超时
 }
 
-// Validate 校验配置合法性。
+// DefaultCategoryNames 默认类别名称（toxic-bert 英文 6 分类）。
+func DefaultCategoryNames() []string {
+	return []string{
+		"toxic",         // 0
+		"severe_toxic",  // 1
+		"obscene",       // 2
+		"threat",        // 3
+		"insult",        // 4
+		"identity_hate", // 5
+	}
+}
+
+// ChineseCategoryNames 中文内容审核类别名称（3 分类：安���/疑似/违规）。
+func ChineseCategoryNames() []string {
+	return []string{
+		"安全",   // 0 - safe
+		"疑似违规", // 1 - suspicious
+		"违规",   // 2 - violation
+	}
+}
+
+// Validate 校验配置���法性。
 func (c *ModelConfig) Validate() error {
 	if c.ModelVersion == "" {
 		return errors.New("model_version is required")
@@ -73,6 +97,10 @@ func (c *ModelConfig) Validate() error {
 	if c.IntraOpNumThreads <= 0 {
 		c.IntraOpNumThreads = 4
 	}
+	// CategoryNames 未设置时使用默认（英文 toxic-bert）
+	if len(c.CategoryNames) == 0 {
+		c.CategoryNames = DefaultCategoryNames()
+	}
 	return nil
 }
 
@@ -80,7 +108,7 @@ func (c *ModelConfig) Validate() error {
 type ModelLoader interface {
 	// Infer 执行推理，返回结果。
 	// mock 模式：固定返回 ResultPass。
-	// 真实模式：调用 ONNX runtime。
+	// 真���模式：调用 ONNX runtime。
 	Infer(ctx context.Context, text string) (*InferenceResult, error)
 
 	// Version 返回当前模型版本。

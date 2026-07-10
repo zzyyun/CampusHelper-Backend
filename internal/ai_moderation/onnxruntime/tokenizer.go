@@ -199,6 +199,8 @@ func wordPieceSplit(word string, vocab map[string]int64) []string {
 }
 
 // cleanText 清洗文本（小写 + 去除控制字符）。
+//
+// 中文特殊处理：保留中文字符原样（��转换为小写以避��损坏）。
 func cleanText(text string) string {
 	var sb strings.Builder
 	for _, r := range text {
@@ -207,5 +209,24 @@ func cleanText(text string) string {
 		}
 		sb.WriteRune(r)
 	}
-	return strings.ToLower(strings.TrimSpace(sb.String()))
+	cleaned := strings.TrimSpace(sb.String())
+	// ��非中文文本应用小写转换，中文保持原样
+	lower := strings.ToLower(cleaned)
+	// 仅当文本中中文字符占比 < 50% 时使用小写（防止中文模型 vocab 匹配失败）
+	hanCount := 0
+	for _, r := range lower {
+		if unicode.Is(unicode.Han, r) {
+			hanCount++
+		}
+	}
+	if float64(hanCount)/float64(len([]rune(lower))) >= 0.5 {
+		return cleaned // 中文文本：保持原始大小写
+	}
+	return lower // 英文/AH文本：转为小写
+}
+
+// Close 释放 tokenizer 资源（当前为无操作，预留接口）。
+func (t *BertTokenizer) Close() error {
+	t.vocab = nil
+	return nil
 }

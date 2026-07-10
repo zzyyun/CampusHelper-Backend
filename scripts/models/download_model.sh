@@ -1,21 +1,27 @@
 #!/bin/bash
-# 模型文件下载脚本
+# 模型文件下载/导出脚本
 #
-# 用途：下载 AI 审核服务所需的 ONNX 模型文件 + tokenizer 词表。
+# 用途：下载或导出 AI 审核���务所需的 ONNX ��型文件 + tokenizer 词表。
 #
-# 两个模式：
-#   1. 从远程 URL 下载预导出的 ONNX 模型（推荐，生产环境使用）
-#   2. 本地 Python 导出（开发环境，需 transformers/torch/onnx）
+# 支持两种模式：
+#   1. 本地 Python 导出（推荐）— 导出任意 Hugging Face 模型为 ONNX
+#   2. 从远程 URL 下载预导出模型 — 下载 .tar.gz ��式的模型包
 #
 # 用法：
-#   # 从远程下载（默认行为）
+#   # 导出英文 toxic-bert（默认 6 分类）
 #   bash scripts/models/download_model.sh
 #
-#   # 指定模型下载 URL
+#   # 导出中文内容审核模型（3 分类：正常/疑似违��/违规）
+#   bash scripts/models/download_model.sh --chinese
+#
+#   # 导出指定 Hugging Face 模型
+#   bash scripts/models/download_model.sh --model your-org/your-model
+#
+#   # 从远程下载
 #   MODEL_URL=https://your-oss.com/models.tar.gz bash scripts/models/download_model.sh
 #
-#   # ���地 Python 导出
-#   bash scripts/models/download_model.sh --local-export
+#   # 打包模型用于上传
+#   bash scripts/models/download_model.sh --package
 #
 #   # 指定输出目录
 #   MODEL_DIR=/path/to/models bash scripts/models/download_model.sh
@@ -24,12 +30,7 @@
 #   $MODEL_DIR/moderation_v1.onnx   # ONNX 模型
 #   $MODEL_DIR/vocab.txt             # BERT tokenizer 词表
 #   $MODEL_DIR/config.json           # 模型配置
-#   $MODEL_DIR/model_info.txt        # 模型元信��（版本/hash/下载时间）
-#
-# 环境变量：
-#   MODEL_URL          模型下载 URL（.tar.gz 或 .zip 格式）
-#   MODEL_DIR          模型输出目录（默认: ./models）
-#   MODEL_VERSION      模型版本号（默认: v1.0）
+#   $MODEL_DIR/model_info.txt        # 模型元信息（版本/hash/类别映射）
 
 set -euo pipefail
 
@@ -38,13 +39,6 @@ MODEL_DIR="${MODEL_DIR:-./models}"
 MODEL_VERSION="${MODEL_VERSION:-v1.0}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-# 预导出模型下载 URL（可替换为自有 OSS/CDN 地址）
-# 注意：此 URL 需指向包含以下文件的 tar.gz 包：
-#   - moderation_v1.onnx
-#   - vocab.txt
-#   - config.json
-DEFAULT_MODEL_URL=""
 
 # ── 辅助函数 ──────────────────────────────────────────────────────────────
 
@@ -57,7 +51,40 @@ require_cmd() {
     command -v "$1" >/dev/null 2>&1 || fail "缺少命令: $1，请先安装"
 }
 
-# ── 模式 1: 从远程 URL 下载 ─────────────────────────────────────────────
+# ── 模式 1: 本地 Python 导出 ─────────────────────────────────────────────
+
+local_export() {
+    local dest_dir="$1"
+    local chinese="$2"
+    local model_name="$3"
+
+    require_cmd python3
+
+    local export_script="$SCRIPT_DIR/export_to_onnx.py"
+    if [[ ! -f "$export_script" ]]; then
+        fail "找不到导出脚本: $export_script"
+    fi
+
+    log "本地 Python 导出 ONNX 模型..."
+    log "这可能需要几分钟，请耐心等待..."
+
+    local extra_args=()
+    if [[ -n "$model_name" ]]; then
+        extra_args+=(--model-name "$model_name")
+    fi
+    if [[ "$chinese" == "true" ]]; then
+        extra_args+=(--chinese)
+    fi
+
+    cd "$PROJECT_ROOT"
+    python3 "$export_script" \
+        --output-dir "$dest_dir" \
+        "${extra_args[@]}"
+
+    success "本地导出完成"
+}
+
+# ── 模式 2: 从远程 URL 下载 ─────────────────────────────────────────────
 
 download_from_url() {
     local url="$1"
@@ -71,7 +98,6 @@ download_from_url() {
 
     local tmpdir
     tmpdir="$(mktemp -d)"
-    # 清理临时目录
     # shellcheck disable=SC2064
     trap "rm -rf '$tmpdir'" EXIT
 
@@ -80,7 +106,7 @@ download_from_url() {
     log "下载中..."
     if ! curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 \
          --max-time 600 -o "$archive" "$url"; then
-        fail "下载失���: $url"
+        fail "下载失败: $url"
     fi
     success "下载完成"
 
@@ -92,53 +118,25 @@ download_from_url() {
     verify_model_files "$dest_dir"
 }
 
-# ── 模式 2: 本地 Python 导出 ─────────────────────────────────────────────
-
-local_export() {
-    local dest_dir="$1"
-
-    require_cmd python3
-
-    local export_script="$SCRIPT_DIR/export_to_onnx.py"
-
-    if [[ ! -f "$export_script" ]]; then
-        fail "找��到导出脚本: $export_script"
-    fi
-
-    log "本地 Python 导出 ONNX 模型（需要 transformers/torch/onnx）..."
-    log "这可能需要几分钟，请耐心等待..."
-
-    cd "$PROJECT_ROOT"
-    python3 "$export_script" --output-dir "$dest_dir"
-
-    success "本地导出完成"
-}
-
 # ── 验证模型文件完整性 ──────────────────────────────────────────────────
 
 verify_model_files() {
     local model_dir="$1"
     local errors=0
 
-    log "验证模型文件..."
+    log "验证模���文件..."
 
-    # 必须有的文件
     local required=("moderation_v1.onnx" "vocab.txt")
     for f in "${required[@]}"; do
         if [[ -f "$model_dir/$f" ]]; then
             local size
             size=$(stat -c%s "$model_dir/$f" 2>/dev/null || stat -f%z "$model_dir/$f" 2>/dev/null || echo 0)
-            success "$f (${size} bytes)"
+            success "$f ($(numfmt --to=iec 2>/dev/null || echo "${size}") bytes)"
         else
             fail "缺少文件: $model_dir/$f"
             errors=$((errors + 1))
         fi
     done
-
-    # 可选的模型元信息
-    if [[ -f "$model_dir/config.json" ]]; then
-        success "config.json (模型配置)"
-    fi
 
     if [[ $errors -gt 0 ]]; then
         fail "模型文件不完整，缺少 $errors 个文件"
@@ -150,6 +148,10 @@ verify_model_files() {
 write_model_info() {
     local model_dir="$1"
     local onnx_path="$model_dir/moderation_v1.onnx"
+
+    if [[ ! -f "$onnx_path" ]]; then
+        return
+    fi
 
     if command -v sha256sum >/dev/null 2>&1; then
         local hash
@@ -171,17 +173,14 @@ model_file: moderation_v1.onnx
 file_size_bytes: $file_size
 sha256: $hash
 download_time: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-model_source: unitary/toxic-bert (Hugging Face)
-num_labels: 6
-max_seq_length: 512
 EOF
 
-    log "模型元信息已写��: $model_dir/model_info.txt"
+    log "模��元信息已写��: $model_dir/model_info.txt"
     echo ""
-    cat "$model_dir/model_info.txt"
+    cat "$model_dir/model_info.txt" 2>/dev/null || true
 }
 
-# ── 打包模型（用于上传到 OSS）───────────────────────────────────────────
+# ── 打包���型（用于上传到 OSS）───────────────────────────────────────────
 
 package_model() {
     local model_dir="$1"
@@ -189,105 +188,129 @@ package_model() {
     require_cmd tar
 
     local package="models-${MODEL_VERSION}.tar.gz"
-    log "打包模型文件: $package"
+    log "打包模���文件: $package"
 
     cd "$model_dir"
-    tar -czf "$PROJECT_ROOT/$package" \
-        moderation_v1.onnx \
-        vocab.txt \
-        config.json \
-        model_info.txt 2>/dev/null || true
+    local files=()
+    for f in moderation_v1.onnx vocab.txt config.json model_info.txt; do
+        if [[ -f "$f" ]]; then
+            files+=("$f")
+        fi
+    done
+    tar -czf "$PROJECT_ROOT/$package" "${files[@]}"
 
     cd "$PROJECT_ROOT"
-    success "模型包已创建: $package ($(stat -c%s "$package" 2>/dev/null || echo 0) bytes)"
+    local pkg_size
+    pkg_size=$(stat -c%s "$package" 2>/dev/null || stat -f%z "$package" 2>/dev/null || echo 0)
+    success "模型包已创建: $package ($(numfmt --to=iec 2>/dev/null || echo "${pkg_size}") bytes)"
     echo ""
-    echo "上传到 OSS 后，可通过以下方式下载："
-    echo "  MODEL_URL=https://your-oss.com/$package bash scripts/models/download_model.sh"
+    echo "上传到 OSS 后可配置："
+    echo "  MODEL_URL=https://your-oss.com/$package"
 }
 
 # ── 主逻辑 ──────────────────────────────────────────────────────────────
 
 main() {
-    local mode="download"
-    local url="$DEFAULT_MODEL_URL"
+    local mode="export"
+    local chinese=false
+    local model_name=""
 
     # 解析参数
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --local-export)
-                mode="export"
+            --chinese)
+                chinese=true
                 shift
+                ;;
+            --model)
+                model_name="$2"
+                shift 2
                 ;;
             --package)
                 mode="package"
                 shift
                 ;;
             --url)
-                url="$2"
+                mode="download"
+                MODEL_URL="$2"
                 shift 2
                 ;;
             *)
                 echo "未知参数: $1"
-                echo "用法: $0 [--local-export | --package] [--url <URL>]"
+                echo "用法: $0 [--chinese] [--model <name>] [--package] [--url <URL>]"
+                echo ""
+                echo "示例:"
+                echo "  $0                    # 导出英文 toxic-bert"
+                echo "  $0 --chinese           # 导出中文内容审核模型"
+                echo "  $0 --model your/model  # 导出自定义���型"
+                echo "  $0 --package           # 打包已有模型"
                 exit 1
                 ;;
         esac
     done
 
     echo "╔══════════════════════════════════════════════════════════╗"
-    echo "║     AI 审核模型文件下载 / 导出工具                       ║"
-    echo "║     模型: unitary/toxic-bert (ONNX)                      ║"
+    echo "║     AI 审核模型文件准备工具                               ║"
+    if [[ -n "$model_name" ]]; then
+        echo "║     模型: $model_name"
+    elif [[ "$chinese" == "true" ]]; then
+        echo "║     模型: 中文内容审核 (安全/疑似违规/违规)              ║"
+    else
+        echo "║     模型: unitary/toxic-bert (英文 6 分类)             ║"
+    fi
     echo "╚══════════════════════════════════════════════════════════╝"
     echo ""
 
     case "$mode" in
-        download)
-            if [[ -z "$url" ]]; then
-                echo "未设置模型下载 URL。"
-                echo ""
-                echo "请选择以下方式之一获取模型："
-                echo ""
-                echo "方式 1（推荐）: 本地 Python 导出"
-                echo "  pip install transformers torch onnx onnxruntime"
-                echo "  bash scripts/models/download_model.sh --local-export"
-                echo ""
-                echo "方式 2: 指定远程 URL"
-                echo "  MODEL_URL=https://your-oss.com/models.tar.gz bash scripts/models/download_model.sh"
-                echo ""
-                echo "方式 3: 从 Hugging Face 手动下载"
-                echo "  1. 安装依赖: pip install transformers torch onnx onnxruntime optimum"
-                echo "  2. 运行导出: python3 scripts/models/export_to_onnx.py"
-                echo "  3. 复制文件: cp models/* /path/to/deploy/models/"
-                echo ""
-                exit 1
-            fi
-            download_from_url "$url" "$MODEL_DIR"
-            ;;
         export)
-            local_export "$MODEL_DIR"
+            if [[ -n "$MODEL_URL" ]] && [[ -z "$model_name" ]]; then
+                # 有 URL 时走下载模式
+                download_from_url "$MODEL_URL" "$MODEL_DIR"
+                verify_model_files "$MODEL_DIR"
+                write_model_info "$MODEL_DIR"
+
+                echo ""
+                success "模型文件准备完成！输出目录: $(cd "$MODEL_DIR" && pwd)"
+                echo ""
+                echo "下一步——在 my_config.yaml 中配置："
+                echo "  aiModeration:"
+                echo "    enabled: true"
+                echo "    modelPath: /models/moderation_v1.onnx"
+                echo "    modelVersion: $MODEL_VERSION"
+                return 0
+            fi
+
+            local_export "$MODEL_DIR" "$chinese" "$model_name"
+            verify_model_files "$MODEL_DIR"
+            write_model_info "$MODEL_DIR"
+
+            echo ""
+            success "模型文件准备完成！输出目录: $(cd "$MODEL_DIR" && pwd)"
+            echo ""
+            echo "下一步——在 my_config.yaml 中配置："
+
+            if [[ "$chinese" == "true" ]] || [[ -n "$model_name" ]]; then
+                echo "  aiModeration:"
+                echo "    enabled: true"
+                echo "    modelPath: /models/moderation_v1.onnx"
+                echo "    modelVersion: $MODEL_VERSION"
+                echo "    modelHash: '$(grep sha256 "$MODEL_DIR/model_info.txt" 2>/dev/null | awk '{print $2}')'"
+                echo "    numClasses: $(grep "num_classes" "$MODEL_DIR/model_info.txt" 2>/dev/null | awk '{print $2}')"
+                echo ""
+                echo "也可通过 Docker volume 挂载:"
+                echo "  docker run -v \$(pwd)/models:/models:ro ..."
+            else
+                echo "  aiModeration:"
+                echo "    enabled: true"
+                echo "    modelPath: /models/moderation_v1.onnx"
+                echo "    modelVersion: $MODEL_VERSION"
+            fi
             ;;
+
         package)
             package_model "$MODEL_DIR"
-            return 0
             ;;
     esac
-
-    # 验证 + 写入元信息
-    verify_model_files "$MODEL_DIR"
-    write_model_info "$MODEL_DIR"
-
-    echo ""
-    success "模型文��准备完成！输出目录: $(cd "$MODEL_DIR" && pwd)"
-    echo ""
-    echo "下一步——在 my_config.yaml 中配置:"
-    echo "  aiModeration:"
-    echo "    enabled: true"
-    echo "    modelPath: /models/moderation_v1.onnx"
-    echo "    modelVersion: $MODEL_VERSION"
-    echo "    modelHash: '$(grep sha256 "$MODEL_DIR/model_info.txt" 2>/dev/null | awk '{print $2}' || echo "")'"
-    echo ""
-    echo "或���过 Docker volume 挂载:"
-    echo "  docker run -v \$(pwd)/models:/models:ro ..."
 }
 
 main "$@"

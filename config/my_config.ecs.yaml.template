@@ -110,6 +110,8 @@ aiModeration:
   modelPath: "/models/moderation_v1.onnx"
   modelVersion: "v1.0-onnx"
   modelHash: ""
+  vocabPath: ""
+  categoryNames: ""
   enabled: true
   timeoutMs: 800
   intraOpNumThreads: 4
