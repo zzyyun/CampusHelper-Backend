@@ -119,11 +119,15 @@ func main() {
 	// 反射（便于 grpcurl 调试）
 	reflection.Register(grpcServer)
 
-	// 注册 AI Moderation gRPC 服务
-	aiService := ai_moderation.NewServiceWithMode(loader, "mock", 0)
+	// 根据配置动态推导运行模式
+	mode := "mock"
+	if modelCfg.Enabled {
+		mode = "onnxruntime"
+	}
+	aiService := ai_moderation.NewServiceWithMode(loader, mode, modelCfg.IntraOpNumThreads)
 	ai_moderation_pb.RegisterAIModerationServiceServer(grpcServer, aiService)
 	log.Printf("[ai-moderation] AI Moderation Service registered (mode=%s, version=%s)",
-		"mock", modelCfg.ModelVersion)
+		mode, modelCfg.ModelVersion)
 
 	// 注册到 etcd
 	serviceName := config.Conf.Service["ai-moderation"].Name
