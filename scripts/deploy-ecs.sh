@@ -13,6 +13,18 @@ ALL_SERVICES="gateway user content task message file"
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
 fail() { echo "[$(date '+%H:%M:%S')] ❌ $*" >&2; exit 1; }
 
+# 加载 .env 环境变量（含 ACR_REGISTRY），供 docker compose 展开 ${ACR_REGISTRY} 使用
+if [ -f /opt/campus/.env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /opt/campus/.env
+  set +a
+fi
+
+if [ -z "${ACR_REGISTRY:-}" ]; then
+  fail "ACR_REGISTRY 环境变量未设置，请在 /opt/campus/.env 中配置"
+fi
+
 log "═══ CampusHelper-Backend 部署 ═══"
 log "目标服务: $SERVICE_INPUT"
 echo ""

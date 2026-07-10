@@ -1,11 +1,13 @@
 # ai-moderation 服务 Dockerfile（含 ONNX Runtime cgo 依赖）
 # 与其他微服务的关键差异：
 #   - CGO_ENABLED=1（onnxruntime-go 需要 cgo）
-#   - 运行时需要 libonnxruntime.so
+#   - 运行时需要 libonnxruntime.so（dlopen 加载，文件名须为 onnxruntime.so）
+#   - 使用 Debian slim 替代 Alpine，避免 musl 与 ONNX Runtime glibc 二进制不兼容
 #   - 模型文件通过 volume 挂载（不在镜像内）
 
 ARG BUILDER_IMAGE=golang:1.25-alpine
-ARG BASE_IMAGE=alpine:3.19
+ARG BASE_IMAGE=debian:bookworm-slim
+ARG ONNXRUNTIME_VERSION=1.17.3
 
 # ===== 构建阶段 =====
 FROM ${BUILDER_IMAGE} AS builder
@@ -28,11 +30,18 @@ RUN go build -tags onnx_enabled -ldflags="-s -w" -o /app/ai-moderation ./cmd/ai-
 # ===== 运行阶段 =====
 FROM ${BASE_IMAGE}
 
-# 安装 onnxruntime 运行时依赖
-RUN apk add --no-cache libstdc++ libgcc
+ARG ONNXRUNTIME_VERSION
 
-# 从 builder 复制 onnxruntime 动态库（如果存在）
-COPY --from=builder /usr/lib/libonnxruntime* /usr/lib/ 2>/dev/null || true
+# 安装运行时依赖 + 下载 ONNX Runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates wget libgomp1 \
+    && wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz \
+       -O /tmp/ort.tgz \
+    && tar -xzf /tmp/ort.tgz -C /tmp \
+    && cp /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}/lib/libonnxruntime.so.${ONNXRUNTIME_VERSION} /usr/lib/ \
+    && ln -s /usr/lib/libonnxruntime.so.${ONNXRUNTIME_VERSION} /usr/lib/onnxruntime.so \
+    && rm -rf /tmp/ort.tgz /tmp/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION} \
+    && apt-get purge -y wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # 从 builder 复制编译产物
 COPY --from=builder /app/ai-moderation /usr/local/bin/ai-moderation
