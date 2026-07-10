@@ -14,13 +14,13 @@ import (
 	content_db "go_projects/praProject1/cmd/content/model"
 	content_service "go_projects/praProject1/cmd/content/service"
 	"go_projects/praProject1/config"
+	"go_projects/praProject1/pkg/aiclient"
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"
 	es_pkg "go_projects/praProject1/pkg/es"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
 	"go_projects/praProject1/pkg/rdb"
 	"go_projects/praProject1/pkg/tracer"
-	"go_projects/praProject1/pkg/aiclient"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -75,7 +75,7 @@ func main() {
 	defer func() {
 		// Publisher 关闭（如需）
 	}()
-	
+
 	// ── AI Moderation 客户端 ────────────────────────────────────────────
 	aiClient, err := aiclient.NewClient(aiclient.Config{
 		Addr:    config.Conf.Service["ai-moderation"].Address,
@@ -115,7 +115,6 @@ func main() {
 	finalizer.Start(context.Background())
 	defer finalizer.Stop()
 	fmt.Println("[content-service] TakenDownFinalizer 已启动（每小时扫描 finalize）")
-
 
 	// ── Elasticsearch + ES Sync Consumer（异步同步消费者） ──────────────────
 	esAddrs := config.Conf.Elasticsearch.Addresses
