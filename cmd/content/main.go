@@ -14,12 +14,14 @@ import (
 	content_db "go_projects/praProject1/cmd/content/model"
 	content_service "go_projects/praProject1/cmd/content/service"
 	"go_projects/praProject1/config"
+	"go_projects/praProject1/pkg/aiclient"
 	"go_projects/praProject1/pkg/db"
 	"go_projects/praProject1/pkg/discovery"
 	es_pkg "go_projects/praProject1/pkg/es"
 	pkg_etcd "go_projects/praProject1/pkg/etcd"
 	"go_projects/praProject1/pkg/rdb"
 	"go_projects/praProject1/pkg/tracer"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -73,6 +75,46 @@ func main() {
 	defer func() {
 		// Publisher 关闭（如需）
 	}()
+
+	// ── AI Moderation 客户端 ────────────────────────────────────────────
+	aiClient, err := aiclient.NewClient(aiclient.Config{
+		Addr:    config.Conf.Service["ai-moderation"].Address,
+		Timeout: 800 * time.Millisecond,
+	})
+	if err != nil {
+		log.Printf("[content-service] WARN: AI 客户端初始化失败，AI 审核降级为 DFA-only: %v", err)
+		aiClient = nil
+	} else {
+		content_service.InitAIClient(aiClient)
+		fmt.Println("[content-service] AI 审核客户端已初始化")
+	}
+
+	// ── AI 异步补判 Consumer ─────────────────────────────────────────────
+	if aiClient != nil {
+		asyncAIReview := content_service.NewAsyncAIReviewConsumer(mqAddr, aiClient, 5)
+		go func() {
+			log.Printf("[content-service] AsyncAIReview Consumer 启动中...")
+			if err := asyncAIReview.Start(context.Background()); err != nil {
+				log.Printf("[content-service] AsyncAIReview Consumer 退出: %v", err)
+			}
+		}()
+		defer asyncAIReview.Stop()
+		fmt.Println("[content-service] AsyncAIReview Consumer 已注册（异步启动）")
+	} else {
+		log.Println("[content-service] AI 客户端��初始化，跳过异步补判 Consumer")
+	}
+
+	// ── 异步补判兜底调度器（每日 02:00 扫描）────────────────────────────
+	scheduler := content_service.NewAsyncReviewScheduler(mqAddr)
+	scheduler.Start(context.Background())
+	defer scheduler.Stop()
+	fmt.Println("[content-service] AsyncReviewScheduler 已启动（每日 02:00 兜底���描）")
+
+	// ── 24h 宽限期终结器（每小时扫描 taken_down_pending）────────────────
+	finalizer := content_service.NewTakenDownFinalizer(mqAddr)
+	finalizer.Start(context.Background())
+	defer finalizer.Stop()
+	fmt.Println("[content-service] TakenDownFinalizer 已启动（每小时扫描 finalize）")
 
 	// ── Elasticsearch + ES Sync Consumer（异步同步消费者） ──────────────────
 	esAddrs := config.Conf.Elasticsearch.Addresses
