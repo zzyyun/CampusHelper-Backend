@@ -21,6 +21,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"time"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -247,13 +248,14 @@ func TryCreateOnnxLoader(cfg types.ModelConfig) (types.ModelLoader, error) {
 		return nil, errors.New("model_path required")
 	}
 
-	// vocab.txt 与模型文件同目录
-	vocabPath := cfg.ModelPath[:len(cfg.ModelPath)-len("moderation_v1.onnx")] + "vocab.txt"
+	// vocab.txt 与���型文件同目录
+	modelDir := filepath.Dir(cfg.ModelPath)
+	vocabPath := filepath.Join(modelDir, "vocab.txt")
 	if _, err := os.Stat(vocabPath); err != nil {
-		// 尝试从 models/ 目录加载
-		vocabPath = "models/vocab.txt"
+		// 尝试从 /models/ 目录加载（Docker volume 挂载路径）
+		vocabPath = "/models/vocab.txt"
 		if _, err2 := os.Stat(vocabPath); err2 != nil {
-			return nil, fmt.Errorf("vocab.txt not found near model: %w", err)
+			return nil, fmt.Errorf("vocab.txt not found (tried %s/vocab.txt and /models/vocab.txt): %w", modelDir, err)
 		}
 	}
 

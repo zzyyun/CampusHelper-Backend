@@ -78,7 +78,7 @@ func main() {
 		}
 	}()
 
-	// ── 初始化 AI 模型加载器（mock 或 onnxruntime）────────────────────────────
+	// ── 初始化 AI 模型加载器（自动降级：ONNX 可用则用，不可用 fallback 到 mock）──
 	modelCfg := ai_moderation.ModelConfig{
 		ModelPath:         viper.GetString("aiModeration.modelPath"),
 		ModelVersion:      viper.GetString("aiModeration.modelVersion"),
@@ -88,7 +88,10 @@ func main() {
 		EnableCPUMemArena: viper.GetBool("aiModeration.enableCpuMemArena"),
 		TimeoutMs:         viper.GetInt("aiModeration.timeoutMs"),
 	}
-	loader, err := ai_moderation.NewModelLoader(modelCfg)
+
+	// 使用 FallbackLoader 工厂：优先加载 ONNX，失败或不可用时自动降级到 mock
+	// 这确保即使模型文件损坏或 ONNX Runtime 版本不兼容，服务仍能启动和运行
+	loader, err := ai_moderation.NewFallbackLoaderFromConfig(modelCfg)
 	if err != nil {
 		log.Fatalf("[ai-moderation] model loader init: %v", err)
 	}
@@ -122,7 +125,12 @@ func main() {
 	// 根据配置动态推导运行模式
 	mode := "mock"
 	if modelCfg.Enabled {
-		mode = "onnxruntime"
+		// 检查 FallbackLoader 是否处于降级状态
+		if fb, ok := loader.(*ai_moderation.FallbackLoader); ok && fb.IsDegraded() {
+			mode = "onnxruntime-degraded"
+		} else {
+			mode = "onnxruntime"
+		}
 	}
 	aiService := ai_moderation.NewServiceWithMode(loader, mode, modelCfg.IntraOpNumThreads)
 	ai_moderation_pb.RegisterAIModerationServiceServer(grpcServer, aiService)
