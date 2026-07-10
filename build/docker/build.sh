@@ -38,11 +38,19 @@ build_one() {
   local svc=$1
   local tag=$2
   echo "==> Building $svc:$tag ..."
+
+  # ai-moderation 需要外网下载 ONNX Runtime C 库，buildx 默认沙箱无网络
+  local net_args=()
+  if [ "$svc" = "ai-moderation" ]; then
+    net_args=(--network host)
+  fi
+
   docker buildx build \
     --platform linux/amd64 \
     -f "build/docker/${svc}.Dockerfile" \
     -t "${REGISTRY}/${svc}:${tag}" \
     --load \
+    "${net_args[@]}" \
     "${BUILD_ARGS[@]}" \
     .
   echo "✓ ${REGISTRY}/${svc}:${tag}"
