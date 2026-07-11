@@ -25,6 +25,8 @@ if [ -f /opt/campus/.env ]; then
 fi
 # 注入 CONFIG_DIR（docker-compose 卷绑定变量插值用）
 grep -q '^CONFIG_DIR=' /opt/campus/.env 2>/dev/null || echo "CONFIG_DIR=./config" >> /opt/campus/.env
+# 注入 NGINX_DIR（docker-compose 卷绑定变量插值用）
+grep -q '^NGINX_DIR=' /opt/campus/.env 2>/dev/null || echo "NGINX_DIR=./nginx" >> /opt/campus/.env
 
 if [ -z "${ACR_REGISTRY:-}" ]; then
   fail "ACR_REGISTRY 环境变量未设置，请在 /opt/campus/.env 中配置"
@@ -50,7 +52,7 @@ if [ "$SERVICE_INPUT" = "all" ]; then
     docker rm -f "$cname" 2>/dev/null || true
   done
   log "重启所有服务..."
-  docker compose -f "$COMPOSE_FILE" up -d
+  docker compose -f "$COMPOSE_FILE" up -d || true
 else
   if [[ ! " $ALL_SERVICES " =~ " $SERVICE_INPUT " ]]; then
     fail "未知服务: $SERVICE_INPUT（可选：$ALL_SERVICES）"
@@ -61,7 +63,7 @@ else
   log "强制删除旧容器（如有）..."
   docker rm -f "campus-${SERVICE_INPUT}" 2>/dev/null || true
   log "重启 $SERVICE_INPUT..."
-  docker compose -f "$COMPOSE_FILE" up -d "$SERVICE_INPUT"
+  docker compose -f "$COMPOSE_FILE" up -d "$SERVICE_INPUT" || true
 fi
 
 log "等待服务启动（15s）..."
@@ -72,7 +74,7 @@ log "=== 部署完成，验证服务状态 ==="
 docker compose -f "$COMPOSE_FILE" ps
 
 # 诊断：输出 gateway 和 ES 容器日志（排查健康检查失败）
-for cname in campus-gateway campus-es; do
+for cname in campus-gateway campus-es campus-content; do
   echo ""
   log "=== $cname 日志（最近 30 行） ==="
   docker logs "$cname" --tail 30 2>&1 || true
