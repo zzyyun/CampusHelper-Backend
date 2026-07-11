@@ -1,0 +1,251 @@
+# CampusHelper-Backend CI/CD 流水线
+# 阶段：test → lint → build → security-scan → deploy
+# 触发：push main → 构建推送镜像；部署需手动审批
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: '部署到 ECS'
+        required: false
+        type: boolean
+        default: false
+      service:
+        description: '要部署的服务（留空=全部）'
+        required: false
+        type: choice
+        options:
+          - ''
+          - gateway
+          - user
+          - content
+          - task
+          - message
+          - file
+
+# ── 全局环境变量 ──────────────────────────────────────────────────────────────
+env:
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  BASE_IMAGE: alpine:3.19
+  RUNTIME_USER: nobody
+  GO_VERSION: '1.25.0'
+
+# ── Job 依赖拓扑 ──────────────────────────────────────────────────────────────
+# test ─┐
+#       ├─→ build-and-push ─→ security-scan ─→ deploy（仅 main + 手动触发）
+# lint ─┘
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 1. 单元测试 — 失败则阻止后续所有阶段
+  # ════════════════════════════════════════════════════════════════════════════════
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./... -race -count=1 -timeout 10m
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 2. 代码检查 — golangci-lint 静态分析
+  # ════════════════════════════════════════════════════════════════════════════════
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+          args: --timeout=10m
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 3. 构建镜像 + 推送到 ACR（仅在 test 和 lint 通过后执行）
+  # ════════════════════════════════════════════════════════════════════════════════
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    needs: [test, lint]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, user, content, task, message, file, ai-moderation, es]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Generate short SHA
+        id: short_sha
+        run: echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # es 的 Dockerfile 路径与其他服务不同，需单独处理
+      - name: Resolve Dockerfile path
+        id: dockerfile
+        run: |
+          if [ "${{ matrix.service }}" = "es" ]; then
+            echo "path=./deployments/docker/es-with-ik/Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=./build/docker/${{ matrix.service }}.Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & Push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.dockerfile.outputs.path }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-${{ steps.short_sha.outputs.value }}
+            ${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            RUNTIME_USER=${{ env.RUNTIME_USER }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: false
+          sbom: false
+
+      - name: Print image tag
+        run: |
+          echo "### ${{ matrix.service }} image pushed ###"
+          echo "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-${{ steps.short_sha.outputs.value }}"
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 4. 安全扫描 — trivy 检查镜像漏洞
+  # ════════════════════════════════════════════════════════════════════════════════
+  security-scan:
+    name: Security ${{ matrix.service }}
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, user, content, task, message, file, ai-moderation, es]
+
+    steps:
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest"
+          format: 'table'
+          exit-code: '0'          # 仅报告，不阻止（HIGH/CRITICAL 建议后续手动修复）
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # 5. 部署到 ECS（push main 自动部署，也支持手动触发）
+  # ════════════════════════════════════════════════════════════════════════════════
+  deploy:
+    name: Deploy to ECS
+    needs: [build-and-push, security-scan]
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.deploy == true))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production      # 需要在 GitHub Settings → Environments 配置
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload files and deploy
+        env:
+          SSH_KEY: /tmp/ecs_key
+        run: |
+          # 准备 SSH 密钥
+          echo "${{ secrets.ECS_SSH_KEY }}" > "$SSH_KEY"
+          chmod 600 "$SSH_KEY"
+
+          # 上传部署脚本和 docker-compose 文件
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              scripts/deploy-ecs.sh \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              deployments/docker/campus-docker-compose.yaml \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/
+
+          # 写入 ACR_REGISTRY 到 .env（docker compose 展开 ${ACR_REGISTRY} 使用）
+          echo "ACR_REGISTRY=${{ env.ACR_REGISTRY }}" > /tmp/campus.env
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              /tmp/campus.env \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/.env
+
+          # 从模板生成配置文件并上传
+          sed -e "s|__RDS_MYSQL_HOST__|${{ secrets.RDS_MYSQL_HOST }}|g" \
+              -e "s|__RDS_MYSQL_PASS__|${{ secrets.RDS_MYSQL_PASS }}|g" \
+              -e "s|__TAIR_REDIS_HOST__|${{ secrets.TAIR_REDIS_HOST }}|g" \
+              -e "s|__WECHAT_APP_ID__|${{ secrets.WECHAT_APP_ID }}|g" \
+              -e "s|__WECHAT_APP_SECRET__|${{ secrets.WECHAT_APP_SECRET }}|g" \
+              config/my_config.ecs.yaml.template > /tmp/my_config.yaml
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              /tmp/my_config.yaml \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/config/my_config.yaml
+
+          # 执行部署
+          ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} \
+              "bash /opt/campus/deploy-ecs.sh ${{ inputs.service || 'all' }}"
+
+          rm -f "$SSH_KEY" /tmp/my_config.yaml
