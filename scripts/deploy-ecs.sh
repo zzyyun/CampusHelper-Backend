@@ -11,7 +11,7 @@ COMPOSE_FILE="/opt/campus/campus-docker-compose.yaml"
 ALL_SERVICES="gateway user content task message file"
 
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
-fail() { echo "[$(date '+%H:%M:%S')] ❌ $*" >&2; exit 1; }
+fail() { echo "[$(date '+%H:%M:%S')] ERROR $*" >&2; exit 1; }
 
 # 加载 .env 环境变量（含 ACR_REGISTRY），供 docker compose 展开 ${ACR_REGISTRY} 使用
 if [ -f /opt/campus/.env ]; then
@@ -25,7 +25,7 @@ if [ -z "${ACR_REGISTRY:-}" ]; then
   fail "ACR_REGISTRY 环境变量未设置，请在 /opt/campus/.env 中配置"
 fi
 
-log "═══ CampusHelper-Backend 部署 ═══"
+log "=== CampusHelper-Backend 部署 ==="
 log "目标服务: $SERVICE_INPUT"
 echo ""
 
@@ -38,22 +38,27 @@ cd "$(dirname "$COMPOSE_FILE")"
 if [ "$SERVICE_INPUT" = "all" ]; then
   log "拉取所有服务镜像..."
   docker compose -f "$COMPOSE_FILE" pull
+  log "停止并清理旧容器..."
+  docker compose -f "$COMPOSE_FILE" down --remove-orphans
   log "重启所有服务..."
-  docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+  docker compose -f "$COMPOSE_FILE" up -d
 else
   if [[ ! " $ALL_SERVICES " =~ " $SERVICE_INPUT " ]]; then
     fail "未知服务: $SERVICE_INPUT（可选：$ALL_SERVICES）"
   fi
+  # 单个服务部署：先强制删除旧容器避免名称冲突，再拉取并重启
   log "拉取 $SERVICE_INPUT 镜像..."
   docker compose -f "$COMPOSE_FILE" pull "$SERVICE_INPUT"
+  log "强制删除旧容器（如有）..."
+  docker rm -f "campus-${SERVICE_INPUT}" 2>/dev/null || true
   log "重启 $SERVICE_INPUT..."
-  docker compose -f "$COMPOSE_FILE" up -d --force-recreate "$SERVICE_INPUT"
+  docker compose -f "$COMPOSE_FILE" up -d "$SERVICE_INPUT"
 fi
 
 log "等待服务启动（15s）..."
 sleep 15
 
 echo ""
-log "═══ 部署完成，验证服务状态 ═══"
+log "=== 部署完成，验证服务状态 ==="
 docker compose -f "$COMPOSE_FILE" ps
-log "✅ 部署完成"
+log "部署完成"
