@@ -252,6 +252,14 @@ jobs:
               /tmp/my_config.yaml \
               ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/config/my_config.yaml
 
+          # 上传 nginx 配置文件
+          ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} \
+              "mkdir -p /opt/campus/nginx/conf /opt/campus/nginx/html /opt/campus/nginx/logs /opt/campus/nginx/certs"
+          scp -o StrictHostKeyChecking=no -i "$SSH_KEY" \
+              deployments/nginx/conf/nginx.conf \
+              ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/campus/nginx/conf/nginx.conf
+
           # 执行部署
           ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" \
               ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} \
