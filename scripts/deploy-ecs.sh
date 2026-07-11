@@ -23,6 +23,8 @@ if [ -f /opt/campus/.env ]; then
   source /opt/campus/.env
   set +a
 fi
+# 注入 CONFIG_DIR（docker-compose 卷绑定变量插值用）
+grep -q '^CONFIG_DIR=' /opt/campus/.env 2>/dev/null || echo "CONFIG_DIR=./config" >> /opt/campus/.env
 
 if [ -z "${ACR_REGISTRY:-}" ]; then
   fail "ACR_REGISTRY 环境变量未设置，请在 /opt/campus/.env 中配置"
@@ -68,4 +70,11 @@ sleep 15
 echo ""
 log "=== 部署完成，验证服务状态 ==="
 docker compose -f "$COMPOSE_FILE" ps
+
+# 诊断：输出 gateway 和 ES 容器日志（排查健康检查失败）
+for cname in campus-gateway campus-es; do
+  echo ""
+  log "=== $cname 日志（最近 30 行） ==="
+  docker logs "$cname" --tail 30 2>&1 || true
+done
 log "部署完成"
