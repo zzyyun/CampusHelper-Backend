@@ -29,3 +29,6 @@ github_actions.pub
 
 # 编译产物
 /gateway
+
+# 模型文件（运行时下载/导出，不入仓）
+/models/

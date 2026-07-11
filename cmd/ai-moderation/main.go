@@ -2,10 +2,9 @@
 //
 // ai-moderation 服务基于 onnxruntime-go 本地推理实现智能内容审核，
 // 作为 Content Service 在 DFA 与人工审核之间的"智能中段"。
-// 当前（v3.0 MVP）实现为 mock 模式（固定返回 PASS），待 task-046 接入真实 ONNX 模型。
 //
 // 端口分配：
-//   - :50061  gRPC 服务（ModerateText / HealthCheck，待 task-040 proto）
+//   - :50061  gRPC 服务（ModerateText / HealthCheck）
 //   - :9091   Prometheus /metrics 端点
 //
 // 详细设计见 docs/ai-moderation-content-service-v3.0-prd.md。
@@ -19,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -78,17 +78,32 @@ func main() {
 		}
 	}()
 
-	// ── 初始化 AI 模型加载器（mock 或 onnxruntime）────────────────────────────
+	// ── 初始化 AI 模型加载器（自动降级：ONNX 可用则用，不可用 fallback 到 mock）──
 	modelCfg := ai_moderation.ModelConfig{
 		ModelPath:         viper.GetString("aiModeration.modelPath"),
 		ModelVersion:      viper.GetString("aiModeration.modelVersion"),
 		ModelHash:         viper.GetString("aiModeration.modelHash"),
+		VocabPath:         viper.GetString("aiModeration.vocabPath"),
 		Enabled:           viper.GetBool("aiModeration.enabled"),
 		IntraOpNumThreads: viper.GetInt("aiModeration.intraOpNumThreads"),
 		EnableCPUMemArena: viper.GetBool("aiModeration.enableCpuMemArena"),
 		TimeoutMs:         viper.GetInt("aiModeration.timeoutMs"),
 	}
-	loader, err := ai_moderation.NewModelLoader(modelCfg)
+	// 从配置读取类别名称（逗号分隔，如 "正常,疑似违规,违规"）
+	if catStr := viper.GetString("aiModeration.categoryNames"); catStr != "" {
+		parts := strings.Split(catStr, ",")
+		trimmed := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		modelCfg.CategoryNames = trimmed
+	}
+
+	// 使用 FallbackLoader 工厂：优先加载 ONNX，失败或不可用时自动降级到 mock
+	// 这确保即使模型文件损坏或 ONNX Runtime 版本不兼容，服务仍能启动和运行
+	loader, err := ai_moderation.NewFallbackLoaderFromConfig(modelCfg)
 	if err != nil {
 		log.Fatalf("[ai-moderation] model loader init: %v", err)
 	}
@@ -112,17 +127,20 @@ func main() {
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("ai-moderation", healthpb.HealthCheckResponse_SERVING)
 	if !modelCfg.Enabled {
-		// mock 模式仍标记 SERVING（后续 task-046 接入真实模型后会校验文件存在性）
 		healthServer.SetServingStatus("ai-moderation", healthpb.HealthCheckResponse_SERVING)
 	}
 
 	// 反射（便于 grpcurl 调试）
 	reflection.Register(grpcServer)
 
-	// 根据配置动态推导运行模式
+	// 根据配置和加载结果动态推导运行模式
 	mode := "mock"
 	if modelCfg.Enabled {
-		mode = "onnxruntime"
+		if fb, ok := loader.(*ai_moderation.FallbackLoader); ok && fb.IsDegraded() {
+			mode = "onnxruntime-degraded"
+		} else {
+			mode = "onnxruntime"
+		}
 	}
 	aiService := ai_moderation.NewServiceWithMode(loader, mode, modelCfg.IntraOpNumThreads)
 	ai_moderation_pb.RegisterAIModerationServiceServer(grpcServer, aiService)
@@ -151,7 +169,7 @@ func main() {
 	<-stopCh
 	log.Printf("[ai-moderation] shutdown signal received")
 
-	// 标记 health 为 NOT_SERVING（让 LB 摘除）
+	// ��记 health 为 NOT_SERVING（让 LB 摘除）
 	healthServer.SetServingStatus("ai-moderation", healthpb.HealthCheckResponse_NOT_SERVING)
 
 	// 给予 5 秒优雅关闭
@@ -170,14 +188,14 @@ func main() {
 		grpcServer.Stop()
 	}
 
-	// 关闭 metrics server
+	// 关��� metrics server
 	_ = metricsServer.Shutdown(shutdownCtx)
 
 	// 更新启动指标
 	metrics.RecordServiceStart()
 }
 
-// registerToEtcd 注册服务到 etcd（包装避免循环依赖）
+// registerToEtcd 注册服务到 etcd（包装避免循环��赖）
 func registerToEtcd(serviceName, addr string) (func(), error) {
 	return discovery.Register(context.Background(), serviceName, addr)
 }

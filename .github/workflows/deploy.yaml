@@ -146,6 +146,14 @@ jobs:
             echo "path=./build/docker/${{ matrix.service }}.Dockerfile" >> "$GITHUB_OUTPUT"
           fi
 
+      # ai-moderation 需要外网下载 ONNX Runtime C 库，buildx 默认沙箱无网络
+      - name: Resolve network mode
+        id: network_mode
+        run: |
+          if [ "${{ matrix.service }}" = "ai-moderation" ]; then
+            echo "mode=host" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build & Push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
@@ -153,6 +161,7 @@ jobs:
           file: ${{ steps.dockerfile.outputs.path }}
           platforms: linux/amd64
           push: true
+          network: ${{ steps.network_mode.outputs.mode }}
           tags: |
             ${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-${{ steps.short_sha.outputs.value }}
             ${{ env.ACR_REGISTRY }}:v1.0-${{ matrix.service }}-latest

@@ -107,11 +107,12 @@ service:
     loadBalance: false
 
 aiModeration:
-  modelPath: "/models/moderation_v1.0.onnx"
-  modelVersion: "v1.0-mock"
+  modelPath: "/models/moderation_v1.onnx"
+  modelVersion: "v1.0-onnx"
   modelHash: ""
-  enabled: false
+  vocabPath: ""
+  categoryNames: ""
+  enabled: true
   timeoutMs: 800
-  syncTimeoutMs: 800
   intraOpNumThreads: 4
   enableCpuMemArena: true
