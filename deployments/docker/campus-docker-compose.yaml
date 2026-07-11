@@ -158,7 +158,7 @@ services:
     image: ${ACR_REGISTRY}:v1.0-gateway-latest
     container_name: campus-gateway
     volumes:
-      - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
+      - ${CONFIG_DIR:-../../config}:/config    # 业务服务 viper 读 /config/my_config.yaml
     env_file:
       - /opt/campus/.env
     environment:
@@ -188,7 +188,7 @@ services:
     image: ${ACR_REGISTRY}:v1.0-user-latest
     container_name: campus-user
     volumes:
-      - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
+      - ${CONFIG_DIR:-../../config}:/config    # 业务服务 viper 读 /config/my_config.yaml
     env_file:
       - /opt/campus/.env
     environment:
@@ -218,7 +218,7 @@ services:
     image: ${ACR_REGISTRY}:v1.0-content-latest
     container_name: campus-content
     volumes:
-      - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
+      - ${CONFIG_DIR:-../../config}:/config    # 业务服务 viper 读 /config/my_config.yaml
     env_file:
       - /opt/campus/.env
     environment:
@@ -250,7 +250,7 @@ services:
     image: ${ACR_REGISTRY}:v1.0-task-latest
     container_name: campus-task
     volumes:
-      - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
+      - ${CONFIG_DIR:-../../config}:/config    # 业务服务 viper 读 /config/my_config.yaml
     env_file:
       - /opt/campus/.env
     environment:
@@ -280,7 +280,7 @@ services:
     image: ${ACR_REGISTRY}:v1.0-message-latest
     container_name: campus-message
     volumes:
-      - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
+      - ${CONFIG_DIR:-../../config}:/config    # 业务服务 viper 读 /config/my_config.yaml
     env_file:
       - /opt/campus/.env
     environment:
@@ -312,7 +312,7 @@ services:
     image: ${ACR_REGISTRY}:v1.0-file-latest
     container_name: campus-file
     volumes:
-      - ../../config:/config    # 业务服务 viper 读 /config/my_config.yaml
+      - ${CONFIG_DIR:-../../config}:/config    # 业务服务 viper 读 /config/my_config.yaml
     env_file:
       - /opt/campus/.env
     environment:
