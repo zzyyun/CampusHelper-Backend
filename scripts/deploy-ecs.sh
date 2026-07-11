@@ -10,6 +10,9 @@ SERVICE_INPUT="${1:-all}"
 COMPOSE_FILE="/opt/campus/campus-docker-compose.yaml"
 ALL_SERVICES="gateway user content task message file"
 
+# docker-compose 中定义的所有容器名
+ALL_CONTAINERS="campus-etcd campus-rabbitmq campus-minio campus-es campus-gateway campus-user campus-content campus-task campus-message campus-file campus-nginx campus-ai-moderation"
+
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
 fail() { echo "[$(date '+%H:%M:%S')] ERROR $*" >&2; exit 1; }
 
@@ -39,7 +42,11 @@ if [ "$SERVICE_INPUT" = "all" ]; then
   log "拉取所有服务镜像..."
   docker compose -f "$COMPOSE_FILE" pull
   log "停止并清理旧容器..."
-  docker compose -f "$COMPOSE_FILE" down --remove-orphans
+  # docker compose down 只清理当前 project 的容器，跨 project 的旧容器需手动删除
+  docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+  for cname in $ALL_CONTAINERS; do
+    docker rm -f "$cname" 2>/dev/null || true
+  done
   log "重启所有服务..."
   docker compose -f "$COMPOSE_FILE" up -d
 else
